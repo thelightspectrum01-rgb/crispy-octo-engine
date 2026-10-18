@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- A hooded king statue in gilt with glowing eyes, inside the adaptive-icon safe zone. -->
+    <path android:fillColor="#C9A052" android:pathData="M51.5,27h5v4h4v4h-4v4h-5v-4h-4v-4h4z" />
+    <path android:fillColor="#E3C27A" android:pathData="M45,48 L44,41 L48,44 L51,39 L54,43 L57,39 L60,44 L64,41 L63,48 Z" />
+    <path android:fillColor="#C9A052" android:pathData="M45,48 Q54,45 63,48 Q66,56 62,61 L46,61 Q42,56 45,48 Z" />
+    <path android:fillColor="#120E14" android:pathData="M49,52 Q54,49 59,52 Q60,57 54,59 Q48,57 49,52 Z" />
+    <path android:fillColor="#8FDCFF" android:pathData="M51.2,53.6a1.3,1.3 0 1,0 2.6,0a1.3,1.3 0 1,0 -2.6,0z M54.2,53.6a1.3,1.3 0 1,0 2.6,0a1.3,1.3 0 1,0 -2.6,0z" />
+    <path android:fillColor="#B18A44" android:pathData="M46,61 L62,61 L66,76 L42,76 Z" />
+    <path android:fillColor="#C9A052" android:pathData="M39,76 L69,76 L70,80 L38,80 Z M36,80 L72,80 L72,84 L36,84 Z" />
+</vector>

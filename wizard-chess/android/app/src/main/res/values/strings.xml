@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Wizard Chess</string>
+    <string name="load_error">The game could not load. Update Android System WebView and try again.</string>
+    <string name="renderer_error">Android stopped the 3D renderer. Reload to continue; your game is saved.</string>
+    <string name="retry">Reload</string>
+    <string name="exit_title">Leave Wizard Chess?</string>
+    <string name="exit_message">Your game is saved on this device.</string>
+    <string name="exit_stay">Stay</string>
+    <string name="exit_leave">Leave</string>
+</resources>

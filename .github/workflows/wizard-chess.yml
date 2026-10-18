@@ -1,0 +1,58 @@
+name: wizard-chess
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'wizard-chess/**'
+      - '.github/workflows/wizard-chess.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wizard-chess
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Rules, AI, shatter physics and bridge tests
+        run: npm test
+
+      - name: Static checks of the web bundle and Android wrapper
+        run: npm run verify
+
+  apk:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      - name: Build APK
+        working-directory: wizard-chess/android
+        run: gradle :app:assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wizard-chess-apk
+          path: wizard-chess/android/app/build/outputs/apk/debug/*.apk
