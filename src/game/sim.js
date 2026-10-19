@@ -46,6 +46,12 @@ export class CartSim {
     this.collected = new Set();
   }
 
+  nearestIndex() {
+    const P = this.piece;
+    const i = Math.round(this.s / P.ds);
+    return i >= P.n ? i - P.n : i;
+  }
+
   /** Advance the simulation by dt seconds. input: { lean: -1..1, brake: 0..1, boost: bool } */
   step(dt, input) {
     const ev = this.events;
@@ -103,6 +109,7 @@ export class CartSim {
       this.braking = true;
     } else {
       a += clamp(PHYS.CRUISE_GAIN * (PHYS.CRUISE_V - v), 0, PHYS.MOTOR_MAX);
+      if (P.inv[this.nearestIndex()]) a += clamp(PHYS.LOOP_GAIN * (PHYS.LOOP_V - v), 0, PHYS.LOOP_ASSIST);
       for (const z of P.zones) {
         if (z.type === 'launch' && this.s >= z.s0 && this.s <= z.s1 && v < PHYS.LAUNCH_V) {
           a += PHYS.LAUNCH_ACCEL;

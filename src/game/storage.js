@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS = {
   sound: true,
   music: true,
   laps: 3,
+  track: 'classic', // classic | mirror
   ghost: 'auto', // auto | pb | rival | off
   camera: 'chase', // chase | onboard | overview
   hints: true, // braking hints

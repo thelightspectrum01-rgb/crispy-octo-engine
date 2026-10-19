@@ -120,3 +120,17 @@ test('riding the grip limit pays out boost (edge events)', () => {
   }
   assert.ok(edges >= 3, `edge events ${edges}`);
 });
+
+test('a slow cart still gets through the loop (motor assist) and never stalls', () => {
+  const iv = track.piece.inversions[0];
+  const sim = new CartSim(track);
+  sim.reset({ s: iv.s0 - 1, v: 3.5 });
+  let stalls = 0;
+  let t = 0;
+  while (sim.s < iv.s1 + 2 && sim.s >= iv.s0 - 1 && t < 25) {
+    for (const e of sim.step(dt, { lean: 0, brake: 0, boost: false })) if (e.type === 'stall') stalls++;
+    t += dt;
+  }
+  assert.equal(stalls, 0);
+  assert.ok(sim.s > iv.s1, `cart stuck inside the loop at s=${sim.s} (loop ends ${iv.s1})`);
+});

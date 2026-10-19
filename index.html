@@ -13,6 +13,7 @@
 <!-- importmap-end -->
 <style>
 :root {
+  color-scheme: dark;
   --bg: #090b12;
   --panel: rgba(12, 16, 26, 0.72);
   --panel-solid: #101624;
@@ -253,11 +254,12 @@ kbd { display: inline-block; min-width: 1.9em; padding: .18em .5em; border-radiu
         <div class="rec"><small>Best time</small><b class="num" id="rec-best">--:--.---</b></div>
         <div class="rec"><small>Medal</small><b id="rec-medal"><span class="medal-dot"></span>None yet</b></div>
       </div>
+      <div class="row"><label>Track</label><div class="chips" data-setting="track"><button class="chip" data-value="classic">Classic</button><button class="chip" data-value="mirror">Mirror</button></div></div>
       <div class="row"><label>Laps</label><div class="chips" data-setting="laps"><button class="chip" data-value="1">1</button><button class="chip" data-value="3">3</button><button class="chip" data-value="5">5</button></div></div>
       <div class="row"><label>Ghost</label><div class="chips" data-setting="ghost"><button class="chip" data-value="auto">Auto</button><button class="chip" data-value="pb">Best</button><button class="chip" data-value="rival">Rival</button><button class="chip" data-value="off">Off</button></div></div>
       <div class="row"><label>Camera</label><div class="chips" data-setting="camera"><button class="chip" data-value="chase">Chase</button><button class="chip" data-value="onboard">Onboard</button><button class="chip" data-value="overview">Desk</button></div></div>
       <div class="row"><label>Quality</label><div class="chips" data-setting="quality"><button class="chip" data-value="auto">Auto</button><button class="chip" data-value="high">High</button><button class="chip" data-value="medium">Med</button><button class="chip" data-value="low">Low</button></div></div>
-      <div class="row"><label>Audio</label><div class="chips"><button class="chip" id="chip-sound">Sound</button><button class="chip" id="chip-music">Music</button><button class="chip" id="chip-hints">Brake hints</button></div></div>
+      <div class="row"><label>Audio</label><div class="chips"><button class="chip" data-toggle="sound">Sound</button><button class="chip" data-toggle="music">Music</button><button class="chip" data-toggle="hints">Brake hints</button></div></div>
       <div class="menu-actions"><button class="btn primary" id="btn-start">▶ Start time trial</button><button class="btn" id="btn-full" title="Fullscreen (F)">⛶ Fullscreen</button><button class="btn" id="btn-reset" title="Erase saved records">Reset records</button></div>
       <div class="controls">
         <div><kbd>A</kbd><kbd>D</kbd> <span><b>Lean</b> into corners</span></div>
@@ -275,6 +277,8 @@ kbd { display: inline-block; min-width: 1.9em; padding: .18em .5em; border-radiu
     <div class="sheet glass">
       <h2>Paused</h2>
       <div class="big">Take a breath</div>
+      <div class="row"><label>Camera</label><div class="chips" data-setting="camera"><button class="chip" data-value="chase">Chase</button><button class="chip" data-value="onboard">Onboard</button><button class="chip" data-value="overview">Desk</button></div></div>
+      <div class="row"><label>Audio</label><div class="chips"><button class="chip" data-toggle="sound">Sound</button><button class="chip" data-toggle="music">Music</button><button class="chip" data-toggle="hints">Brake hints</button></div></div>
       <div class="menu-actions"><button class="btn primary" id="btn-resume">▶ Resume</button><button class="btn" id="btn-restart">Restart</button><button class="btn" id="btn-quit">Menu</button></div>
     </div>
   </div>

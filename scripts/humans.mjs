@@ -4,7 +4,7 @@ import { buildTrack } from '../src/track/build.js';
 import { DESK_RAILS } from '../src/track/layout.js';
 import { CartSim } from '../src/game/sim.js';
 import { Bot } from '../src/game/bot.js';
-import { GAME, PHYS } from '../src/config.js';
+import { GAME } from '../src/config.js';
 import { simulateBot } from '../src/game/race.js';
 
 const track = buildTrack(DESK_RAILS);

@@ -86,9 +86,12 @@ export class UI {
     click('btn-restart', () => h.retry());
     click('btn-quit', () => h.menu());
     click('btn-reset', () => h.resetRecords());
-    click('chip-sound', () => h.toggle('sound'));
-    click('chip-music', () => h.toggle('music'));
-    click('chip-hints', () => h.toggle('hints'));
+    for (const b of document.querySelectorAll('[data-toggle]')) {
+      b.addEventListener('click', () => {
+        b.blur();
+        h.toggle(b.dataset.toggle);
+      });
+    }
     for (const group of document.querySelectorAll('.chips[data-setting]')) {
       group.addEventListener('click', (e) => {
         const b = e.target.closest('.chip');
@@ -142,9 +145,7 @@ export class UI {
       const v = String(s[group.dataset.setting]);
       for (const b of group.querySelectorAll('.chip')) b.classList.toggle('on', b.dataset.value === v);
     }
-    $('chip-sound').classList.toggle('on', !!s.sound);
-    $('chip-music').classList.toggle('on', !!s.music);
-    $('chip-hints').classList.toggle('on', !!s.hints);
+    for (const b of document.querySelectorAll('[data-toggle]')) b.classList.toggle('on', !!s[b.dataset.toggle]);
   }
 
   setRecord(best, medal) {
@@ -394,7 +395,7 @@ export class UI {
 
   /* ----------------------------------------------------------- results */
 
-  showResultsSheet({ title, total, laps, bestLapIndex, newRecord, medal, targets, bestTotal, penalties, rivalDelta }) {
+  showResultsSheet({ title, total, laps, bestLapIndex, newRecord, medal, targets, penalties, rivalDelta }) {
     $('res-title').textContent = title;
     $('res-total').textContent = fmtTime(total);
     $('res-medal').innerHTML = medal && medal !== 'none' ? medalSVG(medal) : '';
@@ -414,6 +415,5 @@ export class UI {
       ? `<span>🥇 <b>${fmtTime(targets.gold)}</b></span><span>🥈 <b>${fmtTime(targets.silver)}</b></span><span>🥉 <b>${fmtTime(targets.bronze)}</b></span>`
       : '';
     this.showResults(true);
-    void bestTotal;
   }
 }

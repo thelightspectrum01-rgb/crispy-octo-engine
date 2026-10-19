@@ -426,7 +426,7 @@ function makeLamp() {
   const base = mesh(new CylinderGeometry(2.6, 2.9, 0.7, 32), dark, { cast: false });
   base.position.y = 0.35;
   g.add(base);
-  const joint = (x, y, z, r = 0.45) => {
+  const joint = (x, y, z, r = 0.7) => {
     const j = mesh(new SphereGeometry(r, 14, 10), dark, { cast: false });
     j.position.set(x, y, z);
     g.add(j);
@@ -442,9 +442,9 @@ function makeLamp() {
   };
   const p0 = new Vector3(0, 0.7, 0);
   const p1 = joint(0, 15, -1.5);
-  const p2 = joint(8.5, 28.5, -4.5, 0.5);
-  seg(p0, p1, 0.24);
-  seg(p1, p2, 0.2);
+  const p2 = joint(8.5, 28.5, -4.5, 0.62);
+  seg(p0, p1, 0.4);
+  seg(p1, p2, 0.32);
   // head
   const head = new Group();
   head.position.copy(p2);
@@ -500,27 +500,35 @@ export function buildDesk(track, { quality = 'high', renderer = null } = {}) {
 
   const base = MAT_T; // surface height props stand on when on the mat
 
-  // --- props inside the circuit
+  // --- props inside the circuit (mirrored circuits are an exact z-reflection, so the props mirror with them)
+  const interior = new Group(); // mirrored (scale.z = -1) together with the circuit
+  interior.scale.z = track.layout.mirror ? -1 : 1;
+  group.add(interior);
   const place = (obj, x, y, z, ry = 0) => {
     obj.position.set(x, y, z);
     obj.rotation.y = ry;
     group.add(obj);
     return obj;
   };
-  const notebook = place(makeNotebook(), -1.5, base, 0.8, -0.14);
-  void notebook;
-  place(makeRuler(), 13.5, base, 5.6, 0.06);
-  place(makePencil(), 14.2, base + 0.1, 3.4, -0.5);
-  const mug = place(makeMug(0xf4f1ea), 13.8, base, -1.2, 0.5);
+  const placeIn = (obj, x, y, z, ry = 0) => {
+    obj.position.set(x, y, z);
+    obj.rotation.y = ry;
+    interior.add(obj);
+    return obj;
+  };
+  placeIn(makeNotebook(), -1.5, base, 0.8, -0.14);
+  placeIn(makeRuler(), 13.5, base, 5.6, 0.06);
+  placeIn(makePencil(), 14.2, base + 0.1, 3.4, -0.5);
+  const mug = placeIn(makeMug(0xf4f1ea), 13.8, base, -1.2, 0.5);
   updaters.push(mug.userData.update);
-  place(makeSticky(0xffe66b, 1), -13.2, base, 4.4, 0.35);
-  place(makeSticky(0xff9ebd, 2), -11.0, base, 2.4, -0.2).position.y += 0.28;
-  place(makeSticky(0x8fe3a8, 3), -14.4, base, -0.8, -0.5);
-  place(makePaperclip(), 6.5, base, 6.0, 0.3);
-  place(makePaperclip(0xe9b949), 8.0, base, 5.2, 2.2);
-  place(makePaperclip(0xd94b4b), -7.8, base, -3.2, 1.1);
-  place(makeDie(), 16.5, base, 2.2, 0.7);
-  place(makeDie(), 17.9, base, 3.0, 0.2);
+  placeIn(makeSticky(0xffe66b, 1), -13.2, base, 4.4, 0.35);
+  placeIn(makeSticky(0xff9ebd, 2), -11.0, base, 2.4, -0.2).position.y += 0.28;
+  placeIn(makeSticky(0x8fe3a8, 3), -14.4, base, -0.8, -0.5);
+  placeIn(makePaperclip(), 6.5, base, 6.0, 0.3);
+  placeIn(makePaperclip(0xe9b949), 8.0, base, 5.2, 2.2);
+  placeIn(makePaperclip(0xd94b4b), -7.8, base, -3.2, 1.1);
+  placeIn(makeDie(), 16.5, base, 2.2, 0.7);
+  placeIn(makeDie(), 17.9, base, 3.0, 0.2);
 
   // --- front of the desk: keyboard + mouse + phone
   place(makeKeyboard(), -9, 0, 23.2, 0.04);
@@ -529,8 +537,7 @@ export function buildDesk(track, { quality = 'high', renderer = null } = {}) {
   place(makeHeadphones(), 30, 0, 22, -0.4);
 
   // --- back: monitor, plant, pen cup, books
-  const monitor = place(makeMonitor(), 6, 0, -24, 0);
-  void monitor;
+  place(makeMonitor(), 6, 0, -24, 0);
   place(makePlant(), 36, base, -19.5, 0.4);
   place(makePenCup(), 31.5, base, -18, 0);
   place(makeBookStack([
@@ -586,6 +593,9 @@ export function buildDesk(track, { quality = 'high', renderer = null } = {}) {
     group,
     lights: { key, fill, rim, monitorGlow },
     size: { w: DESK_W, d: DESK_D, matW: MAT_W, matD: MAT_D },
+    setMirror(on) {
+      interior.scale.z = on ? -1 : 1;
+    },
     update(t) {
       for (const u of updaters) u(t);
     },

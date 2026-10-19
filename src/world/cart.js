@@ -34,7 +34,7 @@ function mesh(geo, mat, cast = true) {
  * The cart. Local space: +X right, +Y up (rail-top plane at y≈0.07), -Z forward.
  * `leanGroup` holds everything that rolls with the lean input; wheels stay on the rails.
  */
-export function createCart({ ghost = false, color = 0xe5382c, accent = 0xffffff, number = '07', tint = 0x59d2ff } = {}) {
+export function createCart({ ghost = false, color = 0xe5382c, accent = 0xdde4ee, number = '07', tint = 0x59d2ff } = {}) {
   const root = new Group();
   const lean = new Group();
   lean.position.y = 0.1;
@@ -45,8 +45,8 @@ export function createCart({ ghost = false, color = 0xe5382c, accent = 0xffffff,
 
   const paint = ghost
     ? new MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.38, depthWrite: false })
-    : new MeshPhysicalMaterial({ color, roughness: 0.3, metalness: 0.08, clearcoat: 1, clearcoatRoughness: 0.1 });
-  const trim = ghost ? paint : new MeshStandardMaterial({ color: accent, roughness: 0.4 });
+    : new MeshPhysicalMaterial({ color, roughness: 0.38, metalness: 0.05, clearcoat: 0.55, clearcoatRoughness: 0.22 });
+  const trim = ghost ? paint : new MeshStandardMaterial({ color: accent, roughness: 0.55 });
   const dark = ghost ? paint : new MeshStandardMaterial({ color: 0x20242c, roughness: 0.6 });
   const metal = ghost ? paint : new MeshStandardMaterial({ color: 0xcfd5dc, roughness: 0.25, metalness: 0.95 });
 

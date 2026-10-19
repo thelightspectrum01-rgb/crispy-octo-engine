@@ -11,7 +11,6 @@ import {
   PCFShadowMap,
   PMREMGenerator,
   PlaneGeometry,
-  Quaternion,
   Scene,
   SRGBColorSpace,
   Vector3,
@@ -134,6 +133,57 @@ export class World {
     this.resize();
   }
 
+  /** Swap in another circuit: rebuild the track meshes + pickups (the desk stays). */
+  setTrack(track) {
+    for (const part of [this.trackMesh.group, this.pickups.group]) {
+      this.scene.remove(part);
+      part.traverse((o) => {
+        o.geometry?.dispose();
+        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+        for (const m of mats) {
+          m.map?.dispose();
+          m.dispose();
+        }
+      });
+    }
+    this.track = track;
+    this.desk.setMirror(!!track.layout.mirror);
+    this.trackMesh = buildTrackMeshes(track, { quality: this.quality });
+    this.pickups = buildPickups(track);
+    this.scene.add(this.trackMesh.group, this.pickups.group);
+    this.center.set(0, 2, 0);
+  }
+
+  /** Render once with every normally-hidden effect visible so all shader programs are compiled up front. */
+  warmup() {
+    const hidden = [];
+    for (const c of [this.cart, this.ghostCart, this.rivalCart]) {
+      hidden.push([c.root, c.root.visible]);
+      c.root.visible = true;
+      c.root.traverse((o) => {
+        if (!o.visible) {
+          hidden.push([o, false]);
+          o.visible = true;
+        }
+      });
+    }
+    this.sparks.emit(new Vector3(0, 1, 0), new Vector3(), { life: 0.1 });
+    this.trail.emit(new Vector3(0, 1, 0), new Vector3(), { life: 0.1 });
+    this.sparks.update(0.001);
+    this.trail.update(0.001);
+    try {
+      this.rig.update(0.016, { pos: new Vector3(0, 2, 0), tan: new Vector3(1, 0, 0), up: new Vector3(0, 1, 0), right: new Vector3(0, 0, 1) });
+      this.post.render(this.scene, this.rig.camera, 0.016);
+    } catch (e) {
+      console.warn('warmup failed', e);
+    }
+    for (const [o, v] of hidden.reverse()) o.visible = v;
+    this.sparks.life.fill(0);
+    this.trail.life.fill(0);
+    this.sparks.update(0.001);
+    this.trail.update(0.001);
+  }
+
   /** Orient a cart on the track at arc length s (positions it on the rails). Returns the frame. */
   placeCart(cart, s, out = this.frame) {
     this.track.piece.frame(s, out);
@@ -178,4 +228,3 @@ export class World {
   }
 }
 
-export { Quaternion };

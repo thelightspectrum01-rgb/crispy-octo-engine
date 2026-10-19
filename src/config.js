@@ -11,6 +11,11 @@ export const PHYS = {
   CRUISE_GAIN: 3.2,
   MOTOR_MAX: 5.0,
 
+  // Inside loops the motor assists so a slow cart always gets through (magnetic loop drive)
+  LOOP_V: 6.5,
+  LOOP_GAIN: 4,
+  LOOP_ASSIST: 9,
+
   BRAKE: 10, // brake deceleration
 
   // Boost

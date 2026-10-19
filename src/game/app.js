@@ -1,9 +1,9 @@
-import { Vector3, Quaternion, Matrix4, Euler } from 'three';
+import { Vector3, Quaternion, Euler } from 'three';
 import { buildTrack } from '../track/build.js';
-import { DESK_RAILS } from '../track/layout.js';
+import { TRACKS } from '../track/layout.js';
 import { makeFrame } from '../track/piece.js';
 import { World } from '../world/world.js';
-import { Race, simulateBot, medalFor, medalTargets, START_S, CRASH_TIME } from './race.js';
+import { Race, simulateBot, medalFor, medalTargets } from './race.js';
 import { CartSim } from './sim.js';
 import { Bot } from './bot.js';
 import { Ghost, decodeGhost, encodeGhost } from './ghost.js';
@@ -76,7 +76,9 @@ export class App {
     this.ui.syncSettings(this.settings);
     await nextFrame();
 
-    this.track = buildTrack(DESK_RAILS);
+    this.trackCache = new Map();
+    if (!TRACKS.some((t) => t.id === this.settings.track)) this.settings.track = 'classic';
+    this.track = this.getTrack(this.settings.track);
     this.trackId = this.track.layout.name;
     await nextFrame();
 
@@ -85,6 +87,7 @@ export class App {
     this.applyQuality(this.settings.quality);
     await nextFrame();
 
+    this.world.warmup();
     this.input = new Input();
     this.audio = new AudioEngine();
     this.audio.soundOn = this.settings.sound;
@@ -115,6 +118,7 @@ export class App {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey) this.toggleFullscreen();
     });
+    if (!document.documentElement.requestFullscreen) document.getElementById('btn-full').classList.add('hidden');
     document.getElementById('btn-full').addEventListener('click', (e) => {
       e.currentTarget.blur();
       this.toggleFullscreen();
@@ -127,19 +131,7 @@ export class App {
       else if (this.state !== 'paused') this.audio.resume();
     });
 
-    // cinematic loop camera: beside the loop plane, looking at the loop centre
-    this.loopCam = null;
-    const iv = this.track.piece.inversions[0];
-    const loop = this.track.plan.loops[0];
-    if (iv && loop) {
-      const f = this.track.piece.frame(iv.s0 + 0.2, makeFrame());
-      const center = f.pos.clone().addScaledVector(f.up, loop.R).addScaledVector(f.right, -loop.lateral / 2);
-      this.loopCam = { pos: center.clone().addScaledVector(f.right, 9.8).add(new Vector3(0, 0.8, 0)), center };
-    }
-
-    // demo cart for the title screen
-    this.demo = { sim: new CartSim(this.track), bot: new Bot(this.track, { skill: 0.93 }), acc: 0 };
-    this.demo.sim.reset({ s: 100, v: 9, boost: 60 });
+    this.setupTrack(this.track, true);
 
     this.refreshRecordPanel();
     this.world.rig.reducedMotion = this.reducedMotion;
@@ -161,6 +153,43 @@ export class App {
     if (params.has('autostart')) this.startRace();
   }
 
+  /* ------------------------------------------------------------ tracks */
+
+  getTrack(id) {
+    if (!this.trackCache.has(id)) {
+      const def = TRACKS.find((t) => t.id === id) ?? TRACKS[0];
+      this.trackCache.set(id, buildTrack(def.layout));
+    }
+    return this.trackCache.get(id);
+  }
+
+  /** Make `track` the active circuit: world meshes, minimap, loop camera, demo cart, record panel. */
+  setupTrack(track, initial = false) {
+    this.track = track;
+    this.trackId = track.layout.name;
+    if (!initial) this.world.setTrack(track);
+    this.ui.buildMinimap(track);
+    // cinematic loop camera: beside the loop plane, looking at the loop centre
+    this.loopCam = null;
+    const iv = track.piece.inversions[0];
+    const loop = track.plan.loops[0];
+    if (iv && loop) {
+      const f = track.piece.frame(iv.s0 + 0.2, makeFrame());
+      const center = f.pos.clone().addScaledVector(f.up, loop.R).addScaledVector(f.right, -loop.lateral / 2);
+      this.loopCam = { pos: center.clone().addScaledVector(f.right, 9.8).add(new Vector3(0, 0.8, 0)), center };
+    }
+    // demo cart for the title screen
+    this.demo = { sim: new CartSim(track), bot: new Bot(track, { skill: 0.93 }), acc: 0 };
+    this.demo.sim.reset({ s: 100, v: 9, boost: 60 });
+    this.world.rig.titleAngle = 0.4;
+    if (!initial) this.refreshRecordPanel();
+  }
+
+  selectTrack(id) {
+    if (this.state !== 'menu' || this.track === this.getTrack(id)) return;
+    this.setupTrack(this.getTrack(id));
+  }
+
   /* ------------------------------------------------------------ settings & quality */
 
   resolveQuality(q) {
@@ -172,8 +201,10 @@ export class App {
     const level = this.resolveQuality(q);
     this.qualityLevel = level;
     this.world.setQuality(level);
-    this.world.setPixelRatioCap(level === 'high' ? 2 : level === 'medium' ? 1.5 : 1);
-    this.baseDpr = this.world.maxPixelRatio;
+    // 'auto' starts conservatively and ramps the resolution up while the frame rate allows it
+    const cap = level === 'high' ? (q === 'auto' ? 1.5 : 2) : level === 'medium' ? 1.25 : 1;
+    this.baseDpr = level === 'high' ? 2 : level === 'medium' ? 1.5 : 1;
+    this.world.setPixelRatioCap(cap);
   }
 
   setSetting(key, value) {
@@ -182,6 +213,7 @@ export class App {
     store.saveSettings(this.settings);
     this.ui.syncSettings(this.settings);
     if (key === 'quality') this.applyQuality(value);
+    if (key === 'track') this.selectTrack(value);
     if (key === 'laps') this.refreshRecordPanel();
     if (key === 'camera' && this.state === 'racing') this.world.rig.setMode(value);
     this.audio?.play('ui');
@@ -198,17 +230,18 @@ export class App {
 
   toggleFullscreen() {
     try {
-      if (document.fullscreenElement) document.exitFullscreen();
-      else document.documentElement.requestFullscreen?.();
+      const p = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
+      p?.catch?.(() => {}); // refused (iframes, some browsers): ignore
     } catch {
       /* not allowed here */
     }
   }
 
   resetRecords() {
-    const laps = [1, 3, 5];
-    for (const l of laps) store.saveRecord(this.trackId, l, null);
-    store.save(`medals.${this.trackId}`, {});
+    for (const def of TRACKS) {
+      for (const l of [1, 3, 5]) store.saveRecord(def.layout.name, l, null);
+      store.save(`medals.${def.layout.name}`, {});
+    }
     this.refreshRecordPanel();
     this.audio.play('ui');
   }
@@ -265,16 +298,18 @@ export class App {
   /* ------------------------------------------------------------ state transitions */
 
   getReference(laps) {
-    if (!this.refCache.has(laps)) this.refCache.set(laps, simulateBot(this.track, laps, { skill: 1 }));
-    return this.refCache.get(laps);
+    const key = `${this.trackId}|${laps}`;
+    if (!this.refCache.has(key)) this.refCache.set(key, simulateBot(this.track, laps, { skill: 1 }));
+    return this.refCache.get(key);
   }
 
   getRival(laps) {
-    if (!this.rivalCache.has(laps)) {
+    const key = `${this.trackId}|${laps}`;
+    if (!this.rivalCache.has(key)) {
       const r = simulateBot(this.track, laps, { skill: RIVAL_SKILL });
-      this.rivalCache.set(laps, { ...r, ghost: new Ghost(r.samples, { name: 'Rival' }) });
+      this.rivalCache.set(key, { ...r, ghost: new Ghost(r.samples, { name: 'Rival' }) });
     }
-    return this.rivalCache.get(laps);
+    return this.rivalCache.get(key);
   }
 
   chooseGhost() {
@@ -340,8 +375,10 @@ export class App {
     this.ui.hintBar(true);
     clearTimeout(this.hintTimer);
     this.hintTimer = setTimeout(() => this.ui.hintBar(false), 9000);
+    // first start from the menu: let the camera fly in from the orbit shot; restarts snap straight away
+    const fromTitle = this.world.rig.mode === 'title';
     this.world.rig.setMode(this.settings.camera);
-    this.world.rig.forceSnap();
+    if (!fromTitle) this.world.rig.forceSnap();
     this.prevBoosting = false;
     this.prevLaunching = false;
     this.world.post.params.flash = 0;
@@ -468,7 +505,7 @@ export class App {
       this.qualityLevel = this.qualityLevel === 'high' ? 'medium' : 'low';
       w.setQuality(this.qualityLevel);
       w.setPixelRatioCap(this.baseDpr * 0.7);
-    } else if (this.fps > 57 && w.maxPixelRatio < this.baseDpr) {
+    } else if (this.fps > 57 && w.maxPixelRatio < this.baseDpr && w.maxPixelRatio < (window.devicePixelRatio || 1)) {
       w.setPixelRatioCap(Math.min(this.baseDpr, w.maxPixelRatio + 0.125));
     }
   }
@@ -637,7 +674,6 @@ export class App {
 
   onRaceEvent(e) {
     const race = this.race;
-    const sim = race.sim;
     switch (e.type) {
       case 'lap': {
         const isFinal = e.lap >= race.laps;
@@ -709,7 +745,6 @@ export class App {
         break;
       default:
     }
-    void sim;
   }
 
   /* ------------------------------------------------------------ derail animation */
@@ -763,7 +798,6 @@ export class App {
     frame.tan.copy(b.tan);
     frame.up.copy(WORLD_UP);
     frame.right.crossVectors(frame.tan, frame.up);
-    void sim;
     return frame;
   }
 
@@ -804,7 +838,7 @@ export class App {
     post.dof = this.qualityLevel !== 'low';
     post.speedBlur = this.reducedMotion ? 0 : (vn * vn * 0.04 + (sim.boosting ? 0.03 : 0)) * intensity * (mode === 'onboard' ? 1.3 : mode === 'chase' ? 1 : 0.3);
     post.vignette = 0.34 + vn * 0.12 * intensity;
-    post.aberration = 0.0006 + vn * 0.0008 * intensity;
+    post.aberration = 0.0004 + vn * 0.0005 * intensity;
     post.grain = 0.016;
   }
 
@@ -980,7 +1014,6 @@ export class App {
     const r = this.result;
     this.state = 'results';
     this.resultsShownAt = this.time;
-    const rival = this.rivalData;
     const title = r.medal === 'none' ? 'Finished' : `${r.medal[0].toUpperCase()}${r.medal.slice(1)} medal`;
     this.ui.showHUD(false);
     this.ui.showTouch(false);
@@ -995,7 +1028,6 @@ export class App {
       penalties: r.penalties,
       rivalDelta: r.rivalDelta,
     });
-    void rival;
     this.showResultsAt = 0;
   }
 
@@ -1018,6 +1050,3 @@ export class App {
   }
 }
 
-void Matrix4;
-void START_S;
-void CRASH_TIME;

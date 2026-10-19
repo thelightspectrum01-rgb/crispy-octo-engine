@@ -36,8 +36,10 @@ audio files.
   show corner speeds.
 * **Ghosts:** your personal-best run is saved (localStorage) and replays as a cyan ghost; with no record yet you race a
   bot **rival** (orange). The delta in the top centre is measured against the active ghost, plus a split at every gate.
+* **Two circuits:** *Classic* and *Mirror* (the same track run clockwise – every habit has to be relearned). Records, medals and
+  ghosts are stored per circuit and lap count.
 * **Medals** are scored against a reference lap time computed by driving the track with a perfect autopilot
-  (gold ≤ +4 %, silver ≤ +10 %, bronze ≤ +22 %). Records are stored per lap count (1 / 3 / 5).
+  (gold ≤ +4 %, silver ≤ +10 %, bronze ≤ +22 %).
 
 ## Run / build / test
 
@@ -64,7 +66,7 @@ src/
     plan.js            turtle plan builder (straights, eased arcs, loop module, exact closure) + height profile
     build.js           resampling, banking from design speed, frames (incl. loop), speed limits → baked Piece
     profile.js         best-case speed profile (forward/backward pass) used by bot, hints and medals
-    layout.js          the circuit definition (edit this to redesign the track)
+    layout.js          the circuit definition + Mirror variant (edit this to redesign the track)
     piece.js           baked samples + interpolation
   game/
     sim.js             cart physics: lateral grip, slip/derail, airtime, boost, launch, laps

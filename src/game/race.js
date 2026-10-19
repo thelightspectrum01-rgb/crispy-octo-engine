@@ -140,9 +140,8 @@ export class Race {
   respawnPoint() {
     const sim = this.sim;
     const P = this.track.piece;
-    if (this.crash.stall) return Math.max(START_S, sim.s - 2);
-    let s = Math.floor((this.crash.s - 14) / 4) * 4;
-    s = Math.max(s, sim.lastCheckpoint, START_S);
+    let s = this.crash.stall ? Math.max(START_S, sim.s - 2) : Math.floor((this.crash.s - 14) / 4) * 4;
+    if (!this.crash.stall) s = Math.max(s, sim.lastCheckpoint, START_S);
     for (const iv of P.inversions) {
       if (s > iv.s0 - 3 && s < iv.s1 + 3) s = Math.max(START_S, iv.s0 - 8);
     }

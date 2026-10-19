@@ -1,4 +1,4 @@
-import { MathUtils, PerspectiveCamera, Vector3, Matrix4, Quaternion } from 'three';
+import { PerspectiveCamera, Vector3, Matrix4, Quaternion } from 'three';
 
 const WORLD_UP = new Vector3(0, 1, 0);
 const damp = (k, dt) => 1 - Math.exp(-k * dt);
@@ -180,4 +180,3 @@ export class CameraRig {
   dispose() {}
 }
 
-export { MathUtils };

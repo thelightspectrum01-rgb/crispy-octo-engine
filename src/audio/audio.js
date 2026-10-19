@@ -255,7 +255,7 @@ export class AudioEngine {
     src.start(t, Math.random() * 2, 1);
   }
 
-  play(name, arg) {
+  play(name) {
     if (!this.started) return;
     const t = this.ctx.currentTime;
     switch (name) {
@@ -324,7 +324,6 @@ export class AudioEngine {
         this._tone(t, { freq: 90, type: 'sawtooth', a: 0.05, d: 0.6, vol: 0.06, slideTo: 140 });
         break;
       default:
-        void arg;
     }
   }
 

@@ -32,6 +32,7 @@ uniform float focus;
 uniform float strength;
 uniform float maxBlur;
 uniform float deadZone;
+uniform int taps;
 
 float linearDepth(float d) {
   float z = d * 2.0 - 1.0;
@@ -48,10 +49,10 @@ void main() {
   if (coc < 0.6) { gl_FragColor = center; return; }
   vec3 acc = center.rgb;
   float wsum = 1.0;
-  const int TAPS = 22;
-  for (int i = 0; i < TAPS; i++) {
+  for (int i = 0; i < 32; i++) {
+    if (i >= taps) break;
     float fi = float(i) + 0.5;
-    float r = sqrt(fi / float(TAPS));
+    float r = sqrt(fi / float(taps));
     float a = fi * 2.39996323;
     vec2 off = vec2(cos(a), sin(a)) * r * coc;
     vec2 uv = vUv + off * texel;
@@ -177,6 +178,7 @@ export class Post {
         strength: { value: 1 },
         maxBlur: { value: 8 },
         deadZone: { value: 2 },
+        taps: { value: 22 },
       },
     });
     this.gradeMat = new ShaderMaterial({
@@ -248,6 +250,7 @@ export class Post {
       u.strength.value = p.dofStrength;
       u.maxBlur.value = p.dofMax * Math.max(0.6, scale);
       u.deadZone.value = p.deadZone;
+      u.taps.value = this.quality === 'high' ? 22 : 14;
       this._fs.material = this.dofMat;
       r.setRenderTarget(this.rtA);
       this._fs.render(r);

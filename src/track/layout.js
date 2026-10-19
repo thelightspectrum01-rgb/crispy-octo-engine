@@ -65,3 +65,25 @@ export const DESK_RAILS = {
     helix: { id: 'helix', d: 0 },
   },
 };
+
+/**
+ * Mirror image of a layout: every arc turns the other way and the loop shifts to the other side, so the circuit
+ * runs clockwise. The physics, banking, speed profile and bot are symmetric, so everything regenerates unchanged.
+ */
+export function mirrorLayout(layout, name = `${layout.name} (Mirror)`) {
+  return {
+    ...layout,
+    name,
+    mirror: !layout.mirror,
+    plan: layout.plan.map((p) => {
+      if (p.type === 'arc') return { ...p, deg: -p.deg };
+      if (p.type === 'loop') return { ...p, lateral: -p.lateral };
+      return { ...p };
+    }),
+  };
+}
+
+export const TRACKS = [
+  { id: 'classic', label: 'Classic', layout: DESK_RAILS },
+  { id: 'mirror', label: 'Mirror', layout: mirrorLayout(DESK_RAILS) },
+];
