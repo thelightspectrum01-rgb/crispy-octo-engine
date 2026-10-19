@@ -57,7 +57,7 @@ export class AudioEngine {
     comp.attack.value = 0.004;
     comp.release.value = 0.2;
     this.master = ctx.createGain();
-    this.master.gain.value = this.soundOn ? 0.9 : 0;
+    this.master.gain.value = this.soundOn ? 1.5 : 0;
     this.master.connect(comp).connect(ctx.destination);
     this.sfx = ctx.createGain();
     this.sfx.gain.value = 1;
@@ -75,7 +75,7 @@ export class AudioEngine {
 
   setSound(on) {
     this.soundOn = on;
-    if (this.master) this.master.gain.setTargetAtTime(on ? 0.9 : 0, this.ctx.currentTime, 0.05);
+    if (this.master) this.master.gain.setTargetAtTime(on ? 1.5 : 0, this.ctx.currentTime, 0.05);
   }
 
   setMusic(on) {
@@ -312,6 +312,10 @@ export class AudioEngine {
       case 'boost-start':
         this.whoosh(0.35);
         this._tone(t, { freq: 200, type: 'sawtooth', a: 0.01, d: 0.3, vol: 0.07, slideTo: 800 });
+        break;
+      case 'edge':
+        this._tone(t, { freq: 1568, type: 'sine', a: 0.003, d: 0.09, vol: 0.09 });
+        this._tone(t + 0.04, { freq: 2093, type: 'sine', a: 0.003, d: 0.1, vol: 0.06 });
         break;
       case 'ui':
         this._tone(t, { freq: 700, type: 'sine', a: 0.003, d: 0.07, vol: 0.12 });

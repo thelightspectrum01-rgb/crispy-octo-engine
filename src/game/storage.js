@@ -31,7 +31,7 @@ export const DEFAULT_SETTINGS = {
   ghost: 'auto', // auto | pb | rival | off
   camera: 'chase', // chase | onboard | overview
   hints: true, // braking hints
-  seenIntro: false,
+  tips: {},
 };
 
 export function loadSettings() {

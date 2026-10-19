@@ -35,6 +35,12 @@ export const PHYS = {
   SLIP_DECEL: 11, // extra deceleration while scrubbing
   DERAIL_SLIP: 1.0,
 
+  // Riding the grip limit (|load| between EDGE_MIN and 1 of the budget) pays out boost: risk = reward
+  EDGE_MIN: 0.8,
+  EDGE_TIME: 0.4,
+  EDGE_BOOST: 5,
+  START_BOOST: 15, // reaction-start bonus
+
   AIR_THRESHOLD: 0.1, // vertical load (g) below which the cart is "airborne"
   STALL_TIME: 2.2,
   FINISH_BRAKE: 7.5,

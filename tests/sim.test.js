@@ -100,3 +100,23 @@ test('airtime on crests feeds the boost meter', () => {
   }
   assert.ok(air > 0.2, `max airtime intensity ${air}`);
 });
+
+test('riding the grip limit pays out boost (edge events)', () => {
+  const bot = new Bot(track, { skill: 1 });
+  const sim = new CartSim(track);
+  sim.reset({ s: 0.9, v: 0 });
+  let edges = 0;
+  let t = 0;
+  while (sim.lap < 1 && t < 80) {
+    sim.boost = 100; // plenty of boost => the bot is pushed up against the cornering limit
+    for (const e of sim.step(dt, bot.decide(sim))) {
+      if (e.type === 'edge') edges++;
+      if (e.type === 'derail') {
+        sim.derailed = false;
+        sim.slip = 0;
+      }
+    }
+    t += dt;
+  }
+  assert.ok(edges >= 3, `edge events ${edges}`);
+});

@@ -54,6 +54,7 @@ export class UI {
       boostVal: $('boost-val'),
       boostMeter: $('boost-meter'),
       gripTick: $('grip-tick'),
+      gripMeter: $('grip-meter'),
       leanL: $('lh-l'),
       leanR: $('lh-r'),
       brake: $('brake-hint'),
@@ -238,6 +239,7 @@ export class UI {
     // grip
     const u = Math.max(-1.45, Math.min(1.45, d.util));
     e.gripTick.style.left = `${50 + (u / 1.45) * 48}%`;
+    e.gripMeter.classList.toggle('edge', !!d.edge);
     e.leanL.style.opacity = d.leanHint < -0.25 ? String(Math.min(1, -d.leanHint)) : '0';
     e.leanR.style.opacity = d.leanHint > 0.25 ? String(Math.min(1, d.leanHint)) : '0';
     e.brake.classList.toggle('on', !!d.brakeHint);
@@ -392,7 +394,7 @@ export class UI {
 
   /* ----------------------------------------------------------- results */
 
-  showResultsSheet({ title, total, laps, bestLapIndex, newRecord, medal, targets, bestTotal, penalties }) {
+  showResultsSheet({ title, total, laps, bestLapIndex, newRecord, medal, targets, bestTotal, penalties, rivalDelta }) {
     $('res-title').textContent = title;
     $('res-total').textContent = fmtTime(total);
     $('res-medal').innerHTML = medal && medal !== 'none' ? medalSVG(medal) : '';
@@ -405,6 +407,9 @@ export class UI {
     });
     if (penalties > 0) rows += `<tr><td>⚠</td><td>Derail penalties</td><td>+${penalties.toFixed(1)}</td></tr>`;
     $('res-laps').innerHTML = rows;
+    const rv = $('res-rival');
+    if (rivalDelta === null || rivalDelta === undefined) rv.textContent = '';
+    else rv.innerHTML = rivalDelta <= 0 ? `You beat the <b style="color:#ff9b7a">rival</b> by <b>${Math.abs(rivalDelta).toFixed(2)} s</b>` : `The <b style="color:#ff9b7a">rival</b> won by <b>${rivalDelta.toFixed(2)} s</b>`;
     $('res-targets').innerHTML = targets
       ? `<span>🥇 <b>${fmtTime(targets.gold)}</b></span><span>🥈 <b>${fmtTime(targets.silver)}</b></span><span>🥉 <b>${fmtTime(targets.bronze)}</b></span>`
       : '';

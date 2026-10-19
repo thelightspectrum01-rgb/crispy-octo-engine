@@ -30,6 +30,8 @@ export class CartSim {
     this.gSideRaw = 0;
     this.gUpLoad = 1;
     this.air = 0; // 0..1 airtime intensity
+    this.edgeT = 0;
+    this.onEdge = false;
     this.boosting = false;
     this.braking = false;
     this.launching = false;
@@ -64,6 +66,18 @@ export class CartSim {
     this.gSideLoad = fSide / PHYS.G;
     this.util = this.gSideLoad / PHYS.GRIP;
     this.gUpLoad = (v * v * q.kUp + PHYS.G * q.gUp) / PHYS.G;
+
+    // --- edge riding: sustained near-limit cornering tops up the boost meter
+    const au = Math.abs(this.util);
+    this.onEdge = au >= PHYS.EDGE_MIN && au <= 1 && v > 6 && !this.finishing;
+    if (this.onEdge) {
+      this.edgeT += dt;
+      if (this.edgeT >= PHYS.EDGE_TIME) {
+        this.edgeT -= PHYS.EDGE_TIME;
+        this.boost = Math.min(PHYS.BOOST_MAX, this.boost + PHYS.EDGE_BOOST);
+        ev.push({ type: 'edge' });
+      }
+    } else this.edgeT = Math.max(0, this.edgeT - dt * 2);
 
     // --- slip / derail
     const over = Math.abs(this.util) - 1;

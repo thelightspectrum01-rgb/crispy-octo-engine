@@ -101,6 +101,9 @@ export class Race {
         case 'pickup':
           events.push({ type: 'pickup', index: e.index });
           break;
+        case 'edge':
+          events.push({ type: 'edge' });
+          break;
         case 'derail':
           this.derails++;
           this.crash = { t: 0, s: sim.s, v: sim.v, util: sim.util };

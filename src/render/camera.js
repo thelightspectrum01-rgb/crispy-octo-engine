@@ -34,6 +34,8 @@ export class CameraRig {
     this._q = new Quaternion();
     this.snap = true;
     this.dofScale = 1;
+    this.reducedMotion = false;
+    this.aspect = aspect;
   }
 
   chaseDistance(speed) {
@@ -47,6 +49,7 @@ export class CameraRig {
   }
 
   resize(aspect) {
+    this.aspect = aspect;
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
   }
@@ -155,13 +158,17 @@ export class CameraRig {
       // gentle roll into corners
       cam.rotateZ(-lean * 0.035);
     }
-    if (Math.abs(cam.fov - this.fov) > 0.01) {
-      cam.fov = this.fov;
+    // keep a usable horizontal field of view on tall (portrait) screens
+    const narrow = this.aspect < 1.25 ? 1 + (1.25 - this.aspect) * 0.6 : 1;
+    const fovNow = Math.min(92, this.fov * narrow);
+    if (Math.abs(cam.fov - fovNow) > 0.01) {
+      cam.fov = fovNow;
       cam.updateProjectionMatrix();
     }
   }
 
   jolt(amount = 1) {
+    if (this.reducedMotion) return;
     this.shake = Math.min(1.5, this.shake + amount);
   }
 

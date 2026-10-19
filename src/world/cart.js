@@ -158,7 +158,7 @@ export function createCart({ ghost = false, color = 0xe5382c, accent = 0xffffff,
   flameCore.visible = false;
   inner.add(flameCore);
   const glow = new Sprite(new SpriteMaterial({ map: glowTexture({ color: '255,170,70' }), blending: AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-  glow.scale.set(1.6, 1.6, 1);
+  glow.scale.set(1.15, 1.15, 1);
   glow.position.set(0, 0.45, 0.9);
   inner.add(glow);
   let boostLight = null;
@@ -219,12 +219,12 @@ export function createCart({ ghost = false, color = 0xe5382c, accent = 0xffffff,
       flame.userData.k = f;
       flame.visible = f > 0.03;
       flameCore.visible = flame.visible;
-      flame.material.opacity = 0.7 * f;
-      flameCore.material.opacity = 0.95 * f;
+      flame.material.opacity = 0.5 * f;
+      flameCore.material.opacity = 0.7 * f;
       const flick = 0.85 + Math.random() * 0.3;
       flame.scale.set(1, flick * (0.6 + f * 0.6), 1);
       flameCore.scale.set(1, flick * (0.6 + f * 0.6), 1);
-      glow.material.opacity = 0.85 * f;
+      glow.material.opacity = 0.4 * f;
       if (boostLight) boostLight.intensity = 5 * f;
       if (rider.userData.arms) {
         const up = Math.min(1, (state.air ?? 0) * 1.4);

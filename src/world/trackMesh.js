@@ -217,18 +217,13 @@ function buildSupportGeometry(piece, supports, plan, helixCentre, helixRange) {
     const base = new CylinderGeometry(1.1, 1.2, 0.1, 24);
     base.translate(helixCentre.x, 0.05, helixCentre.z);
     parts.push(base);
-    for (let s = s0 + 1.5; s <= s1; s += 3.6) {
+    for (let s = s0 + 1.5; s <= s1; s += 5.2) {
       piece.frame(s, fr);
       const y = fr.pos.y - SPINE_DROP - 0.12;
       a.set(helixCentre.x, y, helixCentre.z);
       b.copy(fr.pos).addScaledVector(fr.up, -SPINE_DROP - 0.12);
-      parts.push(cylinderBetween(a, b, 0.08, 6));
-      // diagonal brace
-      a.set(helixCentre.x, y - 1.3, helixCentre.z);
-      b.copy(fr.pos).addScaledVector(fr.up, -SPINE_DROP - 0.12);
-      b.lerp(new Vector3(helixCentre.x, y, helixCentre.z), 0.0);
-      parts.push(cylinderBetween(a, b, 0.045, 5));
-      const collar = new CylinderGeometry(0.5, 0.5, 0.1, 14);
+      parts.push(cylinderBetween(a, b, 0.055, 6));
+      const collar = new CylinderGeometry(0.46, 0.46, 0.08, 14);
       collar.translate(helixCentre.x, y, helixCentre.z);
       parts.push(collar);
     }
@@ -256,7 +251,7 @@ export function buildTrackMeshes(track, { quality = 'high' } = {}) {
     spine: new MeshStandardMaterial({ color: 0xe5382c, metalness: 0.1, roughness: 0.36 }),
     tie: new MeshStandardMaterial({ color: 0x2a2f38, metalness: 0.2, roughness: 0.6 }),
     support: new MeshStandardMaterial({ color: 0xf2efe8, metalness: 0.05, roughness: 0.5 }),
-    platform: new MeshStandardMaterial({ color: 0x7f8b9a, metalness: 0.1, roughness: 0.7 }),
+    platform: new MeshStandardMaterial({ color: 0x6f7c8d, metalness: 0.05, roughness: 0.82 }),
     accent: new MeshStandardMaterial({ color: 0xffc933, metalness: 0.1, roughness: 0.5 }),
     glowBlue: new MeshBasicMaterial({ color: 0x59d2ff }),
   };
@@ -340,8 +335,8 @@ export function buildTrackMeshes(track, { quality = 'high' } = {}) {
   // --- station: side platforms, roof, finish gantry
   const station = new Group();
   const platParts = [];
-  const sA = -9;
-  const sB = 9;
+  const sA = -7;
+  const sB = 8;
   for (const side of [-1, 1]) {
     // platform decks follow the (straight) station; build from a few segments
     const steps = 9;
@@ -385,8 +380,8 @@ export function buildTrackMeshes(track, { quality = 'high' } = {}) {
     tn.copy(fr.tan).negate();
     basis.makeBasis(fr.right, fr.up, tn);
     const quat = new Quaternion().setFromRotationMatrix(basis);
-    const roofMat = new MeshStandardMaterial({ color: 0x3a8fd0, roughness: 0.35, metalness: 0.05, transparent: true, opacity: 0.55 });
-    const roof = new Mesh(new BoxGeometry(5.0, 0.07, 8), roofMat);
+    const roofMat = new MeshStandardMaterial({ color: 0x4f8fc0, roughness: 0.95, metalness: 0.0, transparent: true, opacity: 0.42, envMapIntensity: 0.2 });
+    const roof = new Mesh(new BoxGeometry(5.0, 0.06, 8), roofMat);
     roof.position.set(roofC.x, 3.25, roofC.z);
     roof.quaternion.copy(quat);
     roof.castShadow = false;
@@ -417,10 +412,13 @@ export function buildTrackMeshes(track, { quality = 'high' } = {}) {
       post.castShadow = true;
       gantry.add(post);
     }
-    const bannerMat = new MeshBasicMaterial({ map: bannerTexture('START · FINISH'), side: DoubleSide, toneMapped: true });
+    const bannerMat = new MeshBasicMaterial({ map: bannerTexture('START · FINISH'), toneMapped: true });
     const banner = new Mesh(new PlaneGeometry(4.0, 0.98), bannerMat);
-    banner.position.set(0, 3.35, 0);
-    gantry.add(banner);
+    banner.position.set(0, 3.35, 0.02);
+    const bannerBack = new Mesh(new PlaneGeometry(4.0, 0.98), bannerMat);
+    bannerBack.rotation.y = Math.PI;
+    bannerBack.position.set(0, 3.35, -0.02);
+    gantry.add(banner, bannerBack);
     const bar = new Mesh(new BoxGeometry(4.2, 0.1, 0.14), mats.support);
     bar.position.set(0, 3.9, 0);
     gantry.add(bar);

@@ -18,7 +18,7 @@ const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const CAMERAS = ['chase', 'onboard', 'overview'];
 const GHOST_MODES = ['auto', 'pb', 'rival', 'off'];
-const RIVAL_SKILL = 0.88;
+const RIVAL_SKILL = 0.82;
 
 export class App {
   constructor(root) {
@@ -49,6 +49,14 @@ export class App {
     this.sparkAcc = 0;
     this.trailAcc = 0;
     this.confettiT = 0;
+    this.resultsShownAt = 0;
+    this.goAt = 0;
+    this.startChecked = true;
+    this.lastBoostPress = -99;
+    this.prevBoostKey = false;
+    this.edgeFlash = 0;
+    this.noRender = false;
+    this.reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
   async init() {
@@ -99,6 +107,18 @@ export class App {
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
 
+    this.world.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this.fatal = true;
+      this.ui.fatal('The graphics context was lost (the GPU reset or ran out of memory). Please reload the page.');
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey) this.toggleFullscreen();
+    });
+    document.getElementById('btn-full').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      this.toggleFullscreen();
+    });
     window.addEventListener('resize', () => this.world.resize());
     window.addEventListener('orientationchange', () => setTimeout(() => this.world.resize(), 200));
     document.addEventListener('visibilitychange', () => {
@@ -122,6 +142,7 @@ export class App {
     this.demo.sim.reset({ s: 100, v: 9, boost: 60 });
 
     this.refreshRecordPanel();
+    this.world.rig.reducedMotion = this.reducedMotion;
     this.world.rig.setMode('title');
     this.world.rig.forceSnap();
     this.state = 'menu';
@@ -175,6 +196,15 @@ export class App {
     this.audio.play('ui');
   }
 
+  toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen?.();
+    } catch {
+      /* not allowed here */
+    }
+  }
+
   resetRecords() {
     const laps = [1, 3, 5];
     for (const l of laps) store.saveRecord(this.trackId, l, null);
@@ -203,8 +233,9 @@ export class App {
     });
     inp.on('confirm', () => {
       if (this.state === 'menu') this.startRace();
-      else if (this.state === 'results') this.startRace();
-      else if (this.state === 'paused') this.resume();
+      else if (this.state === 'results') {
+        if (this.time - this.resultsShownAt > 1.2) this.startRace(); // ignore a boost-key tap as the sheet appears
+      } else if (this.state === 'paused') this.resume();
     });
     inp.on('camera', () => {
       const i = CAMERAS.indexOf(this.settings.camera);
@@ -316,6 +347,7 @@ export class App {
     this.world.post.params.flash = 0;
     this.world.rig.titleAngle = 0.4;
     this.hudDelta = null;
+    this.coach = { boost: false, lean: false, usedBoost: false, leanT: 0 };
   }
 
   toMenu() {
@@ -363,11 +395,21 @@ export class App {
 
   frame(now) {
     requestAnimationFrame((t) => this.frame(t));
+    if (this.fatal) return;
     let dt = (now - this.last) / 1000;
     this.last = now;
     if (!(dt > 0)) dt = 1 / 60;
     dt = Math.min(dt, 0.1);
-    this.tick(dt);
+    try {
+      this.tick(dt);
+    } catch (err) {
+      console.error(err);
+      this.errors = (this.errors ?? 0) + 1;
+      if (this.errors > 20) {
+        this.fatal = true;
+        this.ui.fatal('Something went wrong while running the game. Please reload the page.\n' + (err && err.message ? err.message : ''));
+      }
+    }
   }
 
   tick(dt) {
@@ -395,7 +437,7 @@ export class App {
         return;
       default:
     }
-    this.world.render(dt);
+    if (!this.noRender) this.world.render(dt);
   }
 
   autoInput() {
@@ -481,6 +523,8 @@ export class App {
         this.race.start();
         this.state = 'racing';
         this.world.rig.jolt(0.4);
+        this.goAt = this.time;
+        this.startChecked = false;
       }
     }
   }
@@ -490,6 +534,19 @@ export class App {
   updateRace(dt, input, frozen = false) {
     const race = this.race;
     const sim = race.sim;
+    // reaction start: a fresh boost press around the green light earns a free kick
+    if (input.boost && !this.prevBoostKey) this.lastBoostPress = this.time;
+    this.prevBoostKey = !!input.boost;
+    if (this.state === 'racing' && !this.startChecked && this.time > this.goAt + 0.4) {
+      this.startChecked = true;
+      if (this.lastBoostPress >= this.goAt - 0.25 && this.lastBoostPress <= this.goAt + 0.4) {
+        sim.boost = Math.min(PHYS.BOOST_MAX, sim.boost + PHYS.START_BOOST);
+        this.toast('Great start!', 'good', `+${PHYS.START_BOOST}% boost`);
+        this.audio.play('pickup');
+        this.world.rig.jolt(0.3);
+      }
+    }
+    if (this.edgeFlash > 0) this.edgeFlash -= dt;
     if (!frozen && this.state !== 'countdown') {
       this.acc += dt;
       let n = 0;
@@ -619,6 +676,10 @@ export class App {
         }
         break;
       }
+      case 'edge':
+        this.audio.play('edge');
+        this.edgeFlash = 0.35;
+        break;
       case 'derail':
         this.audio.play('derail');
         this.toast('Derailed!', 'bad', `+${GAME.DERAIL_PENALTY.toFixed(1)} s penalty`);
@@ -741,7 +802,7 @@ export class App {
     post.dofMax = mode === 'overview' || mode === 'title' ? 11 : 6.5;
     post.deadZone = mode === 'overview' || mode === 'title' ? 7 : mode === 'onboard' ? 8 : 4.5;
     post.dof = this.qualityLevel !== 'low';
-    post.speedBlur = (vn * vn * 0.04 + (sim.boosting ? 0.03 : 0)) * intensity * (mode === 'onboard' ? 1.3 : mode === 'chase' ? 1 : 0.3);
+    post.speedBlur = this.reducedMotion ? 0 : (vn * vn * 0.04 + (sim.boosting ? 0.03 : 0)) * intensity * (mode === 'onboard' ? 1.3 : mode === 'chase' ? 1 : 0.3);
     post.vignette = 0.34 + vn * 0.12 * intensity;
     post.aberration = 0.0006 + vn * 0.0008 * intensity;
     post.grain = 0.016;
@@ -832,6 +893,7 @@ export class App {
     const target = P.sample(P.profile.v, sim.s + 2 + sim.v * 0.5);
     const targetNow = P.sample(prof, sim.s + 0.6 + sim.v * 0.18);
     const brakeHint = this.settings.hints && race.state === 'running' && !race.crash && sim.v > targetNow + 0.45 && sim.v > 4;
+    this.runCoach(dt, race, sim);
     this.ui.hud({
       time: running ? time : 0,
       lap: race.currentLap,
@@ -846,8 +908,31 @@ export class App {
       util: sim.util,
       leanHint: clamp(sim.gSideRaw / PHYS.LEAN, -1, 1) * (sim.v > 2 ? 1 : 0),
       brakeHint,
+      edge: sim.onEdge || this.edgeFlash > 0,
       map: { player: sim.s, ghost: running && this.activeGhost && !this.ghostIsRival ? this.ghostS : null, rival: running && this.activeGhost && this.ghostIsRival ? this.ghostS : null },
     });
+  }
+
+  /** One-time coaching tips for first-time players. */
+  runCoach(dt, race, sim) {
+    const c = this.coach;
+    if (!c || !this.settings.hints || race.state !== 'running' || race.crash) return;
+    if (this.input.state.boost) c.usedBoost = true;
+    const done = this.settings.tips ?? {};
+    if (!done.boost && !c.boost && !c.usedBoost && race.time > 2.2 && sim.boost > 25) {
+      c.boost = true;
+      this.toast('Boost!', 'blue', this.isTouch ? 'hold the BOOST button' : 'hold SPACE');
+      this.settings.tips = { ...done, boost: true };
+      store.saveSettings(this.settings);
+    }
+    if (Math.abs(sim.gSideRaw) > 0.3 && Math.abs(this.input.state.lean) < 0.1 && sim.v > 5) c.leanT += dt;
+    else c.leanT = Math.max(0, c.leanT - dt);
+    if (!done.lean && !c.lean && c.leanT > 0.5) {
+      c.lean = true;
+      this.toast('Lean in', 'blue', this.isTouch ? 'use ◀ ▶ through bends' : 'hold A / D through bends');
+      this.settings.tips = { ...(this.settings.tips ?? {}), lean: true };
+      store.saveSettings(this.settings);
+    }
   }
 
   /* ------------------------------------------------------------ results */
@@ -875,7 +960,18 @@ export class App {
       store.saveRecord(this.trackId, laps, { ...prev, bestLap });
     }
     store.saveMedal(this.trackId, laps, medal);
-    this.result = { total, laps: lapsArr, bestLapIndex: lapsArr.indexOf(bestLap), newRecord, medal, targets: medalTargets(ref), penalties: race.penalties, laps_n: laps };
+    const rival = this.rivalData;
+    this.result = {
+      total,
+      laps: lapsArr,
+      bestLapIndex: lapsArr.indexOf(bestLap),
+      newRecord,
+      medal,
+      targets: medalTargets(ref),
+      penalties: race.penalties,
+      laps_n: laps,
+      rivalDelta: rival ? total - rival.total : null,
+    };
     if (medal !== 'none') setTimeout(() => this.audio.play('medal'), 300);
   }
 
@@ -883,6 +979,7 @@ export class App {
     if (!this.result) return;
     const r = this.result;
     this.state = 'results';
+    this.resultsShownAt = this.time;
     const rival = this.rivalData;
     const title = r.medal === 'none' ? 'Finished' : `${r.medal[0].toUpperCase()}${r.medal.slice(1)} medal`;
     this.ui.showHUD(false);
@@ -896,6 +993,7 @@ export class App {
       medal: r.medal,
       targets: r.targets,
       penalties: r.penalties,
+      rivalDelta: r.rivalDelta,
     });
     void rival;
     this.showResultsAt = 0;
