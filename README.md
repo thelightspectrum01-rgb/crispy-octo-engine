@@ -39,7 +39,7 @@ audio files.
 * **Two circuits:** *Classic* and *Mirror* (the same track run clockwise – every habit has to be relearned). Records, medals and
   ghosts are stored per circuit and lap count.
 * **Medals** are scored against a reference lap time computed by driving the track with a perfect autopilot
-  (gold ≤ +4 %, silver ≤ +10 %, bronze ≤ +22 %).
+  (gold ≤ +5 %, silver ≤ +13 %, bronze ≤ +28 %).
 
 ## Run / build / test
 
@@ -51,6 +51,7 @@ npm test               # unit tests (track geometry, physics, bot, ghosts, race 
 node scripts/sim.mjs 3 1                 # headless bot run: laps, slip, boost usage (laps, skill)
 node scripts/strategies.mjs              # lazy vs optimal driving strategies (balance check)
 node scripts/humans.mjs                  # human-like bots (jitter / binary lean) vs the medal targets
+node scripts/hintdriver.mjs              # a player who only follows the on-screen hints
 node scripts/inspect.mjs /tmp/track.svg  # track stats + plan / elevation / speed-profile plot (SVG)
 ```
 

@@ -171,11 +171,21 @@ export class World {
     this.trail.emit(new Vector3(0, 1, 0), new Vector3(), { life: 0.1 });
     this.sparks.update(0.001);
     this.trail.update(0.001);
+    let broken = !this.renderer.capabilities.isWebGL2;
     try {
       this.rig.update(0.016, { pos: new Vector3(0, 2, 0), tan: new Vector3(1, 0, 0), up: new Vector3(0, 1, 0), right: new Vector3(0, 0, 1) });
       this.post.render(this.scene, this.rig.camera, 0.016);
+      // any GL error here means the HDR / MSAA / depth-texture pipeline is not usable on this device
+      const gl = this.renderer.getContext();
+      for (let err = gl.getError(); err !== gl.NO_ERROR; err = gl.getError()) broken = true;
     } catch (e) {
-      console.warn('warmup failed', e);
+      console.warn('post-processing warm-up failed', e);
+      broken = true;
+    }
+    if (broken && this.quality !== 'low') {
+      console.warn('Post-processing is not supported here; falling back to direct rendering.');
+      this.setQuality('low');
+      this.fellBack = true;
     }
     for (const [o, v] of hidden.reverse()) o.visible = v;
     this.sparks.life.fill(0);

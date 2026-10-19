@@ -88,6 +88,10 @@ export class App {
     await nextFrame();
 
     this.world.warmup();
+    if (this.world.fellBack) {
+      this.qualityLevel = 'low';
+      this.settings.quality = 'low';
+    }
     this.input = new Input();
     this.audio = new AudioEngine();
     this.audio.soundOn = this.settings.sound;
@@ -925,8 +929,9 @@ export class App {
     // speed target ahead (what the ideal driver does here)
     const prof = sim.boost > 4 ? P.profileBoost.v : P.profile.v;
     const target = P.sample(P.profile.v, sim.s + 2 + sim.v * 0.5);
-    const targetNow = P.sample(prof, sim.s + 0.6 + sim.v * 0.18);
-    const brakeHint = this.settings.hints && race.state === 'running' && !race.crash && sim.v > targetNow + 0.45 && sim.v > 4;
+    // fires ~0.35 s before the ideal braking point so a normal reaction time still brakes in time
+    const targetNow = P.sample(prof, sim.s + 1.2 + sim.v * 0.4);
+    const brakeHint = this.settings.hints && race.state === 'running' && !race.crash && sim.v > targetNow + 0.3 && sim.v > 4;
     this.runCoach(dt, race, sim);
     this.ui.hud({
       time: running ? time : 0,

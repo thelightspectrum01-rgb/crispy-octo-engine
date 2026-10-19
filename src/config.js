@@ -57,7 +57,7 @@ export const GAME = {
   DERAIL_PENALTY: 3.0,
   COUNTDOWN: 3,
   // medal thresholds are multiples of the reference (bot) time
-  MEDALS: { gold: 1.04, silver: 1.1, bronze: 1.22 },
+  MEDALS: { gold: 1.05, silver: 1.13, bronze: 1.28 },
 };
 
 export const TRACK = {
