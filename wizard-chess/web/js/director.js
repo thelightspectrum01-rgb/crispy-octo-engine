@@ -40,6 +40,7 @@ export class PieceSet {
     this.factory = factory;
     this.map = new Map();
     this.prev = new WeakMap();
+    this.version = 0; // bumped whenever the set of standing pieces changes
   }
 
   build(position) {
@@ -52,6 +53,7 @@ export class PieceSet {
   }
 
   spawn(sq, type, color) {
+    this.version++;
     const view = this.factory.create(type, color);
     squareToWorld(sq, view.root.position);
     this.scene.add(view.root);
@@ -60,17 +62,19 @@ export class PieceSet {
   }
 
   at(sq) { return this.map.get(sq); }
-  take(sq) { const v = this.map.get(sq); this.map.delete(sq); return v; }
-  put(sq, view) { this.map.set(sq, view); }
+  take(sq) { this.version++; const v = this.map.get(sq); this.map.delete(sq); return v; }
+  put(sq, view) { this.version++; this.map.set(sq, view); }
   all() { return [...this.map.values()]; }
 
   clear() {
+    this.version++;
     for (const v of this.map.values()) v.dispose();
     this.map.clear();
   }
 
   // Makes the 3D pieces match a position exactly; returns the views it had to create.
   reconcile(position) {
+    this.version++;
     for (const [sq, view] of [...this.map]) {
       const p = position.board[sq];
       if (!p || (p & 7) !== view.type || (p >> 3) !== view.color) {
@@ -94,18 +98,25 @@ export class PieceSet {
   }
 
   // Standing pieces as cylinders for the rubble physics, with their current velocity.
+  // The list and its entries are reused every frame to avoid garbage at high frame rates.
   obstacles(dt) {
-    const out = [];
+    const out = this.obstacleList || (this.obstacleList = []);
+    let n = 0;
     for (const v of this.map.values()) {
       if (!v.root.visible) continue;
       const p = v.root.position;
       let last = this.prev.get(v);
       if (!last) { last = {x: p.x, z: p.z}; this.prev.set(v, last); }
-      const vx = dt > 0 ? (p.x - last.x) / dt : 0, vz = dt > 0 ? (p.z - last.z) / dt : 0;
-      last.x = p.x;
-      last.z = p.z;
-      out.push({x: p.x, z: p.z, r: v.radius * 0.82, h: v.height + p.y, vx, vz});
+      const o = out[n] || (out[n] = {});
+      o.vx = dt > 0 ? (p.x - last.x) / dt : 0;
+      o.vz = dt > 0 ? (p.z - last.z) / dt : 0;
+      o.x = last.x = p.x;
+      o.z = last.z = p.z;
+      o.r = v.radius * 0.82;
+      o.h = v.height + p.y;
+      n++;
     }
+    out.length = n;
     return out;
   }
 }
@@ -145,8 +156,10 @@ export class Director {
       else { this.timeScale = 1; this.slow = null; }
     }
     const dt = realDt * this.timeScale * this.speed;
+    // Swap queues: tweens started from inside a callback land in the fresh queue.
     const list = this.tweens;
-    this.tweens = [];
+    this.tweens = this.spareTweens || [];
+    this.tweens.length = 0;
     for (const tw of list) {
       tw.t += dt;
       const raw = Math.min(1, tw.t / tw.duration);
@@ -154,6 +167,8 @@ export class Director {
       if (raw >= 1) tw.resolve();
       else this.tweens.push(tw);
     }
+    list.length = 0;
+    this.spareTweens = list;
     return dt;
   }
 
@@ -301,6 +316,9 @@ export class Director {
 
   async capture(attacker, victim, to, cinematic) {
     const style = STYLE[attacker.type];
+    // Fracture now, before anything moves: the victim turns to face the attacker (+z) and is struck
+    // on that side, or from above by the rook.
+    this.shatter.prepare(victim, style === 'crush' ? new THREE.Vector3(0, victim.height * 0.8, 0) : new THREE.Vector3(0, victim.height * 0.55, victim.radius * 0.6));
     const A = attacker.root.position.clone(), V = victim.root.position.clone();
     const dir = new THREE.Vector3().subVectors(V, A).setY(0).normalize();
     const reach = REACH[style];
@@ -558,7 +576,7 @@ export class Director {
     const k = Math.min(1, s.t / 4);
     cine.pos.copy(s.start).addScaledVector(s.drift, ease.inOut(k));
     const a = s.attacker.root.position;
-    const look = new THREE.Vector3().lerpVectors(a, s.victim, 0.55).setY(s.lookY + Math.max(0, a.y) * 0.35);
+    const look = this.scratch.lerpVectors(a, s.victim, 0.55).setY(s.lookY + Math.max(0, a.y) * 0.35);
     cine.look.lerp(look, Math.min(1, dt * 4));
     s.punch = Math.max(0, s.punch - dt * 1.4);
     cine.fov = s.fov - 6 * Math.sin(Math.min(1, s.punch) * Math.PI / 2);
@@ -569,6 +587,7 @@ export class Director {
   async promote(sq, type, color) {
     const pawn = this.pieces.take(sq);
     const at = squareToWorld(sq);
+    this.shatter.prepare(pawn, new THREE.Vector3(0, 0.4, 0));
     this.fx.lightPillar(at, true);
     this.audio.play('promote', {volume: 0.9});
     await this.tremble(pawn, 0.45);
@@ -635,6 +654,7 @@ export class Director {
     const king = this.pieces.take(kingSquare);
     if (!king) return;
     this.busy = true;
+    this.shatter.prepare(king, new THREE.Vector3(0, 1.0, 0));
     const at = king.root.position.clone();
     const cine = this.rig.cine;
     // Film the fallen king from the clearest of several angles around it.

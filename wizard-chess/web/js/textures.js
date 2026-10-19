@@ -192,7 +192,7 @@ void main() {
 `;
 
 export class TextureBaker {
-  constructor(renderer, size = 512) {
+  constructor(renderer, size = 512, anisotropy = 8) {
     this.renderer = renderer;
     this.size = size;
     this.scene = new THREE.Scene();
@@ -200,7 +200,7 @@ export class TextureBaker {
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
     this.quad.frustumCulled = false;
     this.scene.add(this.quad);
-    this.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    this.anisotropy = Math.min(anisotropy, renderer.capabilities.getMaxAnisotropy());
     this.targets = [];
   }
 
@@ -642,8 +642,7 @@ export function cookieTexture(size = 512) {
 
 // Board frame lettering: a–h along files and 1–8 along ranks, gold inlaid into dark stone.
 // Layout matches the frame's planar UVs: u spans x ∈ [-extent, extent], v spans z ∈ [-extent, extent].
-export function frameTexture(extent, inner, fontFamily) {
-  const size = 1024;
+export function frameTexture(extent, inner, fontFamily, size = 1024) {
   return canvasTexture(size, size, (ctx, w) => {
     const toPx = v => ((v + extent) / (2 * extent)) * w;
     const g = ctx.createLinearGradient(0, 0, w, w);

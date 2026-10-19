@@ -60,6 +60,7 @@
   </aside>
 
   <div id="banner" role="status" aria-live="polite"></div>
+  <p id="perf" hidden></p>
 
   <section id="title-screen" class="screen" hidden>
     <div class="title-block">
@@ -112,13 +113,22 @@
     </fieldset>
     <fieldset>
       <legend class="label">Graphics</legend>
-      <div class="segmented four">
+      <div class="segmented five">
         <input type="radio" name="quality" id="quality-auto" value="auto" checked><label for="quality-auto">Auto</label>
         <input type="radio" name="quality" id="quality-low" value="low"><label for="quality-low">Low</label>
         <input type="radio" name="quality" id="quality-medium" value="medium"><label for="quality-medium">Medium</label>
         <input type="radio" name="quality" id="quality-high" value="high"><label for="quality-high">High</label>
+        <input type="radio" name="quality" id="quality-ultra" value="ultra"><label for="quality-ultra">Ultra 4K</label>
       </div>
+      <p class="note">Ultra renders at 3840×2160, or your screen's native resolution if higher, with 2K textures and glossy clear-coated stone.</p>
       <p id="quality-note" class="note" hidden>Graphics change on restart. <button id="btn-restart" class="link" type="button">Restart now</button></p>
+    </fieldset>
+    <fieldset>
+      <legend class="label">Frame rate</legend>
+      <div class="segmented two">
+        <input type="radio" name="framecap" id="framecap-display" value="display" checked><label for="framecap-display">Match display (120 Hz+)</label>
+        <input type="radio" name="framecap" id="framecap-60" value="60"><label for="framecap-60">60 fps</label>
+      </div>
     </fieldset>
     <div class="sliders">
       <label for="vol-sfx" class="label">Effects</label>
@@ -129,6 +139,8 @@
     <div class="toggles">
       <label class="toggle" for="opt-hints"><input type="checkbox" id="opt-hints" checked><span>Show legal moves</span></label>
       <label class="toggle" for="opt-shake"><input type="checkbox" id="opt-shake" checked><span>Camera shake</span></label>
+      <label class="toggle" for="opt-dynamic"><input type="checkbox" id="opt-dynamic" checked><span>Lower resolution to hold the frame rate</span></label>
+      <label class="toggle" for="opt-fps"><input type="checkbox" id="opt-fps"><span>Show frame rate</span></label>
     </div>
     <div class="panel-actions">
       <button id="settings-done" class="btn primary" type="button">Done</button>
@@ -144,7 +156,7 @@
       <li>The candle shows a suggested move. The curved arrow takes back your last move and the reply.</li>
       <li>Games are saved on this device after every move.</li>
     </ul>
-    <p class="keys"><kbd>U</kbd> take back <kbd>H</kbd> hint <kbd>V</kbd> reset view <kbd>M</kbd> sound <kbd>Esc</kbd> menu</p>
+    <p class="keys"><kbd>U</kbd> take back <kbd>H</kbd> hint <kbd>V</kbd> reset view <kbd>M</kbd> sound <kbd>F</kbd> frame rate <kbd>Esc</kbd> menu</p>
     <div class="panel-actions">
       <button id="howto-close" class="btn primary" type="button">Close</button>
     </div>

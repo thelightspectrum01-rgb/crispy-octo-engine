@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from '../vendor/three/addons/utils/BufferGeometryUtils.js';
 import {runeCircleTexture, moveDotTexture, captureRingTexture, squareGlowTexture, frameTexture, frameMetalTexture} from './textures.js';
+import {addPlanarReflection} from './reflection.js';
 
 export const FRAME_INNER = 4.03, FRAME_OUTER = 4.62, FRAME_TOP = 0.05;
 export const STEP1 = {half: 5.25, top: -0.3}, STEP2 = {half: 6.1, top: -0.6}, FLOOR_Y = -0.9;
@@ -47,16 +48,19 @@ function marker(texture, size, color, opacity = 1) {
 }
 
 export class Board {
-  constructor({textures, fontFamily}) {
+  // reflection: optional PlanarReflection mirrored in the polished squares. detail: canvas texture scale.
+  constructor({textures, fontFamily, reflection = null, detail = 1, anisotropy = 8}) {
     this.group = new THREE.Group();
     this.time = 0;
-    this.buildSquares(textures);
+    this.detail = detail;
+    this.anisotropy = anisotropy;
+    this.buildSquares(textures, reflection);
     this.buildFrame(textures, fontFamily);
     this.buildDais(textures);
     this.buildMarkers();
   }
 
-  buildSquares(textures) {
+  buildSquares(textures, reflection) {
     const light = [], dark = [];
     for (let rank = 0; rank < 8; rank++) {
       for (let file = 0; file < 8; file++) {
@@ -68,10 +72,16 @@ export class Board {
     const lightGeo = planarUV(mergeGeometries(light), 0.23, 0.13, 0.41);
     const darkGeo = planarUV(mergeGeometries(dark), 0.23, 0.57, 0.08);
     [...light, ...dark].forEach(g => g.dispose());
+    // Mirror-polished marble: crisp cathedral reflections, plus the pieces themselves when a
+    // planar reflection is available.
     const lightMat = new THREE.MeshStandardMaterial({map: textures.boardLight, normalMap: textures.boardNormal, normalScale: new THREE.Vector2(0.15, 0.15),
-      roughness: 0.2, metalness: 0, envMapIntensity: 0.9});
+      roughness: reflection ? 0.1 : 0.16, metalness: 0, envMapIntensity: 1.0});
     const darkMat = new THREE.MeshStandardMaterial({map: textures.boardDark, normalMap: textures.boardNormal, normalScale: new THREE.Vector2(0.15, 0.15),
-      roughness: 0.16, metalness: 0, envMapIntensity: 1.1});
+      roughness: reflection ? 0.07 : 0.12, metalness: 0, envMapIntensity: 1.2});
+    if (reflection) {
+      addPlanarReflection(lightMat, reflection, {strength: 0.7, blur: 1.3});
+      addPlanarReflection(darkMat, reflection, {strength: 1.0, blur: 0.9});
+    }
     this.lightSquares = new THREE.Mesh(lightGeo, lightMat);
     this.darkSquares = new THREE.Mesh(darkGeo, darkMat);
     for (const m of [this.lightSquares, this.darkSquares]) { m.receiveShadow = true; this.group.add(m); }
@@ -101,8 +111,8 @@ export class Board {
     }
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.computeVertexNormals();
-    const map = frameTexture(extent, i, fontFamily);
-    map.anisotropy = 8;
+    const map = frameTexture(extent, i, fontFamily, Math.round(1024 * this.detail));
+    map.anisotropy = this.anisotropy;
     const orm = frameMetalTexture(map);
     const frame = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({map, roughnessMap: orm, metalnessMap: orm, roughness: 1, metalness: 1,
       normalMap: textures.stoneNormal, normalScale: new THREE.Vector2(0.3, 0.3), envMapIntensity: 1.2}));
@@ -138,7 +148,8 @@ export class Board {
   }
 
   buildMarkers() {
-    const rune = runeCircleTexture(), dot = moveDotTexture(), capture = captureRingTexture(), glow = squareGlowTexture();
+    const d = this.detail;
+    const rune = runeCircleTexture(512 * d), dot = moveDotTexture(256 * d), capture = captureRingTexture(256 * d), glow = squareGlowTexture(128 * d);
     this.selectRing = marker(rune, 1.15, new THREE.Color(0.45, 0.85, 1.4));
     this.checkRing = marker(rune, 1.3, new THREE.Color(2.0, 0.25, 0.15));
     this.hintRing = marker(rune, 1.1, new THREE.Color(1.6, 1.15, 0.4));

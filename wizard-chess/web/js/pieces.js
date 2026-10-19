@@ -2,8 +2,9 @@
 // Bodies are surfaces of revolution with carved cloth folds and baked crevice occlusion;
 // crowns, the horse head and the crenellations are added as extra solids.
 import * as THREE from 'three';
-import {mergeGeometries} from '../vendor/three/addons/utils/BufferGeometryUtils.js';
+import {mergeGeometries, mergeVertices} from '../vendor/three/addons/utils/BufferGeometryUtils.js';
 import {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, WHITE} from './chess.js';
+import {REFLECT_LAYER} from './reflection.js';
 
 const TAU = Math.PI * 2;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -206,30 +207,220 @@ function archShape(w, h) {
   return s;
 }
 
-function horseHead(segments) {
-  const pts = [
-    [-0.16, 0.22], [-0.18, 0.32], [-0.186, 0.42], [-0.172, 0.52], [-0.143, 0.62], [-0.103, 0.7], [-0.072, 0.762],
-    [-0.066, 0.8], [-0.052, 0.888], [-0.012, 0.806], [0.03, 0.792], [0.09, 0.752], [0.15, 0.702], [0.2, 0.652],
-    [0.245, 0.602], [0.27, 0.562], [0.281, 0.53], [0.276, 0.505], [0.256, 0.49], [0.214, 0.488], [0.236, 0.47],
-    [0.226, 0.455], [0.19, 0.45], [0.14, 0.46], [0.09, 0.48], [0.06, 0.45], [0.055, 0.4], [0.07, 0.34], [0.1, 0.28], [0.13, 0.22],
-  ];
-  const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
-  const depth = 0.12;
-  const geo = new THREE.ExtrudeGeometry(shape, {depth, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.028,
-    bevelSegments: segments > 32 ? 4 : 2, curveSegments: 6});
-  geo.deleteAttribute('normal');
-  geo.deleteAttribute('uv');
-  // Shape space (forward, up, thickness) -> piece space (z, y, x), centred on the axis.
-  geo.applyMatrix4(new THREE.Matrix4().makeRotationY(-Math.PI / 2));
-  geo.translate(depth / 2, 0, 0);
-  const p = geo.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const z = p.getZ(i), y = p.getY(i);
-    const taper = 1.12 - 0.38 * smooth(0.0, 0.29, z) + 0.12 * smooth(0.4, 0.25, y) - 0.1 * smooth(0.72, 0.86, y);
-    p.setX(i, p.getX(i) * taper);
+// Signed distance to a closed polygon of [x, y] points, positive inside.
+function polygonDistance(poly) {
+  return (x, y) => {
+    let best = Infinity, inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const ax = poly[j][0], ay = poly[j][1], ex = poly[i][0] - ax, ey = poly[i][1] - ay;
+      const t = Math.min(1, Math.max(0, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey)));
+      const dx = x - ax - ex * t, dy = y - ay - ey * t;
+      best = Math.min(best, dx * dx + dy * dy);
+      if ((ay > y) !== (poly[i][1] > y) && x < ax + (y - ay) / ey * ex) inside = !inside;
+    }
+    return inside ? Math.sqrt(best) : -Math.sqrt(best);
+  };
+}
+
+// Boundary of a polygon grown outwards by `grow` (convex corners rounded), resampled every `step`.
+function grownOutline(poly, grow, step, distance) {
+  const n = poly.length;
+  let area = 0;
+  for (let i = 0; i < n; i++) area += poly[i][0] * poly[(i + 1) % n][1] - poly[(i + 1) % n][0] * poly[i][1];
+  const sign = Math.sign(area);
+  const fine = [], fineStep = step / 4;
+  for (let i = 0; i < n; i++) {
+    const a = poly[i], b = poly[(i + 1) % n], c = poly[(i + 2) % n];
+    const ex = b[0] - a[0], ey = b[1] - a[1], len = Math.hypot(ex, ey);
+    const nx = sign * ey / len, ny = -sign * ex / len;
+    const count = Math.ceil(len / fineStep);
+    for (let k = 0; k < count; k++) fine.push([a[0] + ex * k / count + nx * grow, a[1] + ey * k / count + ny * grow]);
+    const fx = c[0] - b[0], fy = c[1] - b[1], flen = Math.hypot(fx, fy);
+    if ((ex * fy - ey * fx) * sign <= 0) continue;
+    const a0 = Math.atan2(ny, nx);
+    let sweep = Math.atan2(-sign * fx / flen, sign * fy / flen) - a0;
+    sweep -= Math.round(sweep / (Math.PI * 2)) * Math.PI * 2;
+    const steps = Math.ceil(Math.abs(sweep) * grow / fineStep);
+    for (let k = 0; k < steps; k++) fine.push([b[0] + Math.cos(a0 + sweep * k / steps) * grow, b[1] + Math.sin(a0 + sweep * k / steps) * grow]);
   }
-  geo.computeVertexNormals();
-  return part(geo, 1);
+  // Offset edges swallowed by the grown shape (inside concave corners) lie closer than `grow` to the polygon.
+  const loop = fine.filter(([x, y]) => distance(x, y) + grow < 1e-7);
+  const lengths = [0];
+  for (let i = 1; i <= loop.length; i++) lengths.push(lengths[i - 1] + Math.hypot(loop[i % loop.length][0] - loop[i - 1][0], loop[i % loop.length][1] - loop[i - 1][1]));
+  const total = lengths[loop.length], count = Math.round(total / step), out = [];
+  for (let k = 0, i = 0; k < count; k++) {
+    const at = (k / count) * total;
+    while (lengths[i + 1] < at) i++;
+    const t = (at - lengths[i]) / (lengths[i + 1] - lengths[i] || 1), p = loop[i], q = loop[(i + 1) % loop.length];
+    out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+  }
+  return out;
+}
+
+// Bowyer-Watson Delaunay triangulation of 2D points; returns index triples. Points are inserted
+// left to right, so a triangle whose circumcircle ends left of the sweep is final.
+function delaunay(points) {
+  const n = points.length;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of points) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+  const span = Math.max(maxX - minX, maxY - minY) * 16, mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+  const P = [...points, [mx - span, my - span], [mx, my + span], [mx + span, my - span]];
+  const tris = [], done = [];
+  const add = (a, b, c) => {
+    const [ax, ay] = P[a], [bx, by] = P[b], [cx, cy] = P[c];
+    const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+    const a2 = ax * ax + ay * ay, b2 = bx * bx + by * by, c2 = cx * cx + cy * cy;
+    const ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d, uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d;
+    const r2 = (ax - ux) ** 2 + (ay - uy) ** 2;
+    tris.push({v: [a, b, c], x: ux, y: uy, r2, right: ux + Math.sqrt(r2)});
+  };
+  add(n, n + 1, n + 2);
+  const order = points.map((p, i) => i).sort((a, b) => points[a][0] - points[b][0]);
+  for (const i of order) {
+    const [px, py] = P[i];
+    const edges = new Map();
+    let kept = 0;
+    for (const t of tris) {
+      if (t.right < px) { done.push(t); continue; }
+      if ((px - t.x) ** 2 + (py - t.y) ** 2 >= t.r2) { tris[kept++] = t; continue; }
+      for (let e = 0; e < 3; e++) {
+        const u = t.v[e], w = t.v[(e + 1) % 3], key = Math.min(u, w) * (n + 3) + Math.max(u, w);
+        if (edges.has(key)) edges.delete(key); else edges.set(key, [u, w]);
+      }
+    }
+    tris.length = kept;
+    for (const [u, w] of edges.values()) add(u, w, i);
+  }
+  return [...done, ...tris].filter(t => t.v.every(k => k < n)).map(t => t.v);
+}
+
+// A carved solid of a 2D silhouette (forward, up): grown by `grow`, with a rounded rim `rim` wide and
+// a half-thickness given by width(forward, up). Built as two smooth sheets meeting at the outline, with
+// analytic normals, so polished stone reflects it as one sculpted surface instead of flat facets.
+function carvedSilhouette(silhouette, {grow, rim, width, step, rings, shade = () => 1, power = 2.4}) {
+  const distance = polygonDistance(silhouette);
+  const depthAt = (s, y) => distance(s, y) + grow;
+  const profile = d => {
+    if (d >= rim) return [1, 0];
+    const q = 1 - Math.max(0, d) / rim, base = 1 - q ** power;
+    return [base ** (1 / power), base ** (1 / power - 1) * q ** (power - 1) / rim];
+  };
+  const thickness = (s, y) => width(s, y) * profile(depthAt(s, y))[0];
+  const eps = 1e-4;
+  const gradient = (f, s, y) => [(f(s + eps, y) - f(s - eps, y)) / (2 * eps), (f(s, y + eps) - f(s, y - eps)) / (2 * eps)];
+
+  // Sample points: the outline, rings across the rounded rim at even angles, then a jittered grid inside.
+  const points = [], depths = [], cells = new Map(), gap = step * 0.35;
+  const cellKey = (s, y) => `${Math.floor(s / gap)},${Math.floor(y / gap)}`;
+  const tryAdd = (s, y, d) => {
+    const cs = Math.floor(s / gap), cy = Math.floor(y / gap);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      for (const k of cells.get(`${cs + i},${cy + j}`) || []) if (Math.hypot(points[k][0] - s, points[k][1] - y) < gap) return;
+    }
+    const key = cellKey(s, y);
+    if (!cells.has(key)) cells.set(key, []);
+    cells.get(key).push(points.length);
+    points.push([s, y]);
+    depths.push(d);
+  };
+  const outline = grownOutline(silhouette, grow, step, distance);
+  for (const [s, y] of outline) tryAdd(s, y, 0);
+  const outlineCount = points.length;
+  const inward = outline.map(([s, y]) => { const [gs, gy] = gradient(depthAt, s, y), l = Math.hypot(gs, gy) || 1; return [gs / l, gy / l]; });
+  let previous = 0;
+  for (let k = 1; k <= rings; k++) {
+    const d = rim * (1 - Math.cos((k / rings) * Math.PI / 2) ** (2 / power));
+    outline.forEach(([s, y], i) => {
+      const ps = s + inward[i][0] * d, py = y + inward[i][1] * d, actual = depthAt(ps, py);
+      if (Math.abs(actual - d) < 0.2 * (d - previous) + 1e-5) tryAdd(ps, py, actual);
+    });
+    previous = d;
+  }
+  let minS = Infinity, maxS = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [s, y] of outline) { minS = Math.min(minS, s); maxS = Math.max(maxS, s); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+  const h = step * 1.6;
+  let seed = 7;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+  for (let s = minS; s <= maxS; s += h) {
+    for (let y = minY; y <= maxY; y += h) {
+      const js = s + random() * 0.5 * h, jy = y + random() * 0.5 * h, d = depthAt(js, jy);
+      if (d > rim + 0.4 * h) tryAdd(js, jy, d);
+    }
+  }
+
+  // Triangulate; drop triangles outside the silhouette and split any lying flat across the outline.
+  const triangles = [];
+  for (const tri of delaunay(points)) {
+    const [a, b, c] = tri.map(k => points[k]);
+    const cs = (a[0] + b[0] + c[0]) / 3, cy = (a[1] + b[1] + c[1]) / 3;
+    if (depthAt(cs, cy) <= 0) continue;
+    if ([[a, b], [b, c], [c, a]].some(([p, q]) => depthAt((p[0] + q[0]) / 2, (p[1] + q[1]) / 2) < -0.25 * step)) continue;
+    if (tri.every(k => k < outlineCount)) {
+      const centre = points.length;
+      points.push([cs, cy]);
+      depths.push(depthAt(cs, cy));
+      triangles.push([tri[0], tri[1], centre], [tri[1], tri[2], centre], [tri[2], tri[0], centre]);
+    } else triangles.push(tri);
+  }
+
+  // Two sheets, x = +thickness and x = -thickness, sharing the outline vertices.
+  const positions = [], normals = [], colors = [], index = [];
+  const front = [], back = [];
+  points.forEach(([s, y], k) => {
+    const d = depths[k], w0 = width(s, y), [f, df] = profile(d);
+    const [ws, wy] = gradient(width, s, y);
+    const [gs, gy] = gradient(depthAt, s, y), l = Math.hypot(gs, gy) || 1;
+    let nx = 1, ny = -(wy * f + w0 * df * gy / l), nz = -(ws * f + w0 * df * gs / l);
+    if (k < outlineCount || !Number.isFinite(ny + nz)) { nx = 0; ny = -gy / l; nz = -gs / l; }
+    const nl = Math.hypot(nx, ny, nz), c = shade(s, y);
+    front[k] = positions.length / 3;
+    positions.push(w0 * f, y, s);
+    normals.push(nx / nl, ny / nl, nz / nl);
+    colors.push(c, c, c);
+    if (k < outlineCount) { back[k] = front[k]; return; }
+    back[k] = positions.length / 3;
+    positions.push(-w0 * f, y, s);
+    normals.push(-nx / nl, ny / nl, nz / nl);
+    colors.push(c, c, c);
+  });
+  for (let [a, b, c] of triangles) {
+    // The +x sheet needs clockwise winding in the (forward, up) plane.
+    const [pa, pb, pc] = [points[a], points[b], points[c]];
+    if ((pb[0] - pa[0]) * (pc[1] - pa[1]) - (pb[1] - pa[1]) * (pc[0] - pa[0]) > 0) [b, c] = [c, b];
+    index.push(front[a], front[b], front[c], back[a], back[c], back[b]);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(index);
+  return {geometry, thickness, depthAt};
+}
+
+const HEAD_OUTLINE = [
+  [-0.16, 0.22], [-0.18, 0.32], [-0.186, 0.42], [-0.172, 0.52], [-0.143, 0.62], [-0.103, 0.7], [-0.072, 0.762],
+  [-0.066, 0.8], [-0.052, 0.888], [-0.012, 0.806], [0.03, 0.792], [0.09, 0.752], [0.15, 0.702], [0.2, 0.652],
+  [0.245, 0.602], [0.27, 0.562], [0.281, 0.53], [0.276, 0.505], [0.256, 0.49], [0.214, 0.488], [0.236, 0.47],
+  [0.226, 0.455], [0.19, 0.45], [0.14, 0.46], [0.09, 0.48], [0.06, 0.45], [0.055, 0.4], [0.07, 0.34], [0.1, 0.28], [0.13, 0.22],
+];
+const HEAD_EYE = [0.12, 0.69];
+
+// The horse head: the side silhouette carved with a rounded rim, full cheeks, a slimmer muzzle and
+// eye sockets. Returns the geometry and the head's half-thickness, for seating the eyes.
+function horseHead(segments) {
+  const gauss = (s, y, cs, cy, rs, ry) => Math.exp(-(((s - cs) / rs) ** 2 + ((y - cy) / ry) ** 2));
+  const socket = (s, y) => gauss(s, y, HEAD_EYE[0], HEAD_EYE[1], 0.026, 0.026);
+  const width = (s, y) => {
+    const taper = 1.12 - 0.38 * smooth(0.0, 0.29, s) + 0.12 * smooth(0.4, 0.25, y) - 0.1 * smooth(0.72, 0.86, y);
+    return 0.1 * taper * (0.84 + 0.16 * gauss(s, y, 0, 0.52, 0.2, 0.26) + 0.12 * gauss(s, y, 0, 0.5, 0.08, 0.07) - 0.14 * socket(s, y));
+  };
+  const head = carvedSilhouette(HEAD_OUTLINE, {
+    grow: 0.028, rim: 0.06, width,
+    step: Math.min(0.016, Math.max(0.0056, 0.45 / segments)),
+    rings: segments >= 52 ? 5 : segments >= 40 ? 4 : 3,
+    shade: (s, y) => 1 - 0.3 * socket(s, y),
+  });
+  return {geometry: part(head.geometry), thickness: head.thickness, depthAt: head.depthAt};
 }
 
 function horseMane() {
@@ -244,10 +435,14 @@ function horseMane() {
   const depth = 0.05;
   const geo = new THREE.ExtrudeGeometry(shape, {depth, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.012, bevelSegments: 2, curveSegments: 4});
   geo.deleteAttribute('uv');
+  geo.deleteAttribute('normal');
   geo.applyMatrix4(new THREE.Matrix4().makeRotationY(-Math.PI / 2));
   geo.translate(depth / 2, 0, 0);
-  geo.computeVertexNormals();
-  return part(geo, 0.85);
+  // Welded so the locks shade smoothly rather than as flat extruded faces.
+  const welded = mergeVertices(geo, 1e-5);
+  welded.computeVertexNormals();
+  geo.dispose();
+  return part(welded, 0.85);
 }
 
 function crownSpikes(stone, count, radius, y0, height, base, ball, tilt, phase = 0) {
@@ -297,10 +492,15 @@ const BLUEPRINTS = {
   },
   [KNIGHT](seg) {
     const profile = [...plinth(0.32), [0.245, 0.14], [0.235, 0.17], [0.215, 0.2], [0.19, 0.225], [0.15, 0.24], [0, 0.245]];
-    const stone = [part(lathe(profile, seg)), horseHead(seg), horseMane()], glow = [];
+    const head = horseHead(seg);
+    const stone = [part(lathe(profile, seg)), head.geometry, horseMane()], glow = [];
+    // Eyes sit in their sockets; dark nostrils on the front of the muzzle, where the rim faces forward.
+    const eyeX = head.thickness(...HEAD_EYE) - 0.003;
+    let nostrilZ = 0.32;
+    while (nostrilZ > 0.2 && head.thickness(nostrilZ, 0.515) < 0.026) nostrilZ -= 0.001;
     for (const side of [-1, 1]) {
-      glow.push(sphere(0.016, side * 0.097, 0.69, 0.12, 0.5, 1, 1, 1, 10));
-      glow.push(sphere(0.013, side * 0.042, 0.522, 0.268, 0.7, 1, 1, 0, 8));
+      glow.push(sphere(0.016, side * eyeX, HEAD_EYE[1], HEAD_EYE[0], 0.5, 1, 1, 1, 10));
+      glow.push(sphere(0.012, side * 0.026, 0.515, nostrilZ - 0.003, 1, 1.1, 0.55, 0, 8));
     }
     const volumes = [
       {type: 'frustum', y0: 0, y1: 0.245, r0: 0.32, r1: 0.2},
@@ -381,7 +581,7 @@ function profileVolumes(profile, height) {
 }
 
 export class PieceFactory {
-  constructor({textures, segments = 48}) {
+  constructor({textures, segments = 48, glossy = false}) {
     this.models = {};
     for (const type of [PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING]) {
       const bp = BLUEPRINTS[type](segments);
@@ -392,11 +592,19 @@ export class PieceFactory {
       this.models[type] = {stone, glow, height: bp.height, radius: bp.radius, eye: bp.eye, weapon: bp.weapon,
         volumes: bp.volumes || profileVolumes(bp.profile, bp.height)};
     }
-    const common = {vertexColors: true, normalMap: textures.stoneNormal, normalScale: new THREE.Vector2(0.55, 0.55)};
-    this.stoneMaterials = [
-      new THREE.MeshStandardMaterial({...common, map: textures.whiteMarble, roughness: 0.36, metalness: 0, envMapIntensity: 0.75}),
-      new THREE.MeshStandardMaterial({...common, map: textures.blackMarble, roughness: 0.3, metalness: 0, envMapIntensity: 0.9}),
+    const common = {vertexColors: true, normalMap: textures.stoneNormal, normalScale: new THREE.Vector2(0.45, 0.45), metalness: 0};
+    // Polished marble. With 'glossy', a clear lacquer-like coat adds razor-sharp highlights and
+    // mirror reflections over the carved stone underneath.
+    this.stoneMaterials = glossy ? [
+      new THREE.MeshPhysicalMaterial({...common, map: textures.whiteMarble, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.0}),
+      new THREE.MeshPhysicalMaterial({...common, map: textures.blackMarble, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.15}),
+    ] : [
+      new THREE.MeshStandardMaterial({...common, map: textures.whiteMarble, roughness: 0.24, envMapIntensity: 0.9}),
+      new THREE.MeshStandardMaterial({...common, map: textures.blackMarble, roughness: 0.17, envMapIntensity: 1.05}),
     ];
+    // Freshly broken stone is matte and crystalline, unlike the polished skin.
+    this.fractureMaterials = this.stoneMaterials.map(m => new THREE.MeshStandardMaterial({vertexColors: true, map: m.map,
+      normalMap: m.normalMap, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.82, metalness: 0, envMapIntensity: 0.35}));
     this.glowColors = [new THREE.Color(0.55, 1.6, 2.4), new THREE.Color(2.6, 0.7, 0.18)];
     this.glowMaterials = this.glowColors.map(c => new THREE.MeshBasicMaterial({color: c.clone(), vertexColors: true}));
   }
@@ -422,6 +630,8 @@ export class PieceView {
     this.body.receiveShadow = true;
     this.glowMaterial = factory.glowMaterials[color].clone();
     this.glow = new THREE.Mesh(model.glow, this.glowMaterial);
+    this.body.layers.enable(REFLECT_LAYER);
+    this.glow.layers.enable(REFLECT_LAYER);
     this.pose.add(this.body, this.glow);
     this.facing = color === WHITE ? Math.PI : 0;
     this.root.rotation.y = this.facing;

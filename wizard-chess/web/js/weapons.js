@@ -1,6 +1,7 @@
 // Summoned stone weapons with glowing runes. Each points along +Y from its grip (the origin).
 import * as THREE from 'three';
 import {mergeGeometries} from '../vendor/three/addons/utils/BufferGeometryUtils.js';
+import {REFLECT_LAYER} from './reflection.js';
 
 function prep(g, matrix) {
   let out = g.index ? g.toNonIndexed() : g;
@@ -86,6 +87,8 @@ export class Weapon {
     this.glowMaterial = kit.factory.glowMaterials[color].clone();
     this.glowMaterial.color.multiplyScalar(1.4);
     this.glow = new THREE.Mesh(model.glow, this.glowMaterial);
+    this.body.layers.enable(REFLECT_LAYER);
+    this.glow.layers.enable(REFLECT_LAYER);
     this.group.add(this.body, this.glow);
     this.group.scale.setScalar(0.001);
   }

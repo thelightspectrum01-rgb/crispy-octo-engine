@@ -20,7 +20,8 @@ It runs offline in any browser with WebGL 2, and the same files are packaged as 
 - Clustered piers, pointed arcades, ribbed vaults, a clerestory, stained-glass lancets, two rose windows, an altar, banners, candelabras with flickering light, light shafts and drifting dust.
 - Sunlight through the glass is a shadow-casting spotlight with a stained-glass cookie; the board itself stays in clear light so squares remain readable.
 - Marble, flagstone and masonry textures are generated on the GPU at load time; nothing is downloaded.
-- Each piece is a sculpted surface of revolution with carved cloth folds and baked crevice shading. White pieces are ivory statuary marble with pale-blue eyes; black pieces are Nero Marquina marble with ember eyes.
+- Each piece is a sculpted surface of revolution with carved cloth folds and baked crevice shading; the knight's head is carved from its side silhouette with a rounded rim, full cheeks and eye sockets. White pieces are ivory statuary marble with pale-blue eyes; black pieces are Nero Marquina marble with ember eyes.
+- Glossy finish: on High and Ultra the statues are clear-coated polished marble, the board is mirror-polished and reflects the pieces standing on it (a planar reflection), and every polished surface reflects the real cathedral, captured into an environment map at load time. Shards show matte fresh-broken stone on their fracture faces.
 
 **Captures, physics and sound**
 - Six attack styles: the pawn thrusts a spear, the knight rears and strikes with its head, the bishop brings a crozier down overhead, the rook leaps and crushes, the queen sweeps a sword, and the king chops with a greatsword.
@@ -53,9 +54,23 @@ Opening `index.html` straight from the file system does not work, because browse
 | Hint | Candle | H |
 | Reset the view | Circular arrows | V |
 | Sound on/off | Speaker | M |
+| Frame-rate meter | Settings | F |
 | Menu | Three lines | Esc |
 
-Graphics quality is chosen automatically (Low, Medium or High) and can be changed in Settings. Low turns off shadows and bloom for older phones.
+## Graphics and frame rate
+
+| Preset | Render resolution | Textures | Shadows | Glossy finish | Board mirror |
+|---|---|---|---|---|---|
+| Low | screen at 1× | 512 px | off | polished | off |
+| Medium | up to 1.5× | 512 px | 1024 px | polished | 30% resolution |
+| High | up to 2× | 1024 px | 2048 px | clear-coated | 50% resolution |
+| **Ultra 4K** | 3840×2160, or the screen's native resolution if higher | 2048 px | 4096 px | clear-coated | 75% resolution |
+
+**Auto** picks a preset from the device and GPU (Ultra for recent dedicated GPUs and Apple Pro/Max chips). Change it in Settings → Graphics; a restart applies it. On a screen smaller than 4K, Ultra still renders 3840×2160 and scales it down, which acts as supersampling.
+
+The game runs at the display's refresh rate: a 120 Hz screen gets up to 120 fps, a 144 Hz screen up to 144. Set **Frame rate → 60 fps** to save battery. When the GPU cannot keep up, the game lowers its render resolution in steps (to no less than half) until frames stop dropping, then probes back up once there is headroom; turn this off in Settings to keep full resolution at any frame rate. Press **F**, or enable **Show frame rate**, to see the live frame rate, the detected display rate and the current render resolution.
+
+Whether 4K and 120 fps hold at the same time depends on the GPU. Shadows and the board mirror are only re-rendered when something moves, and rubble physics steps at 240 Hz so it stays smooth on fast displays. To avoid stutters mid-duel, shaders are compiled and textures uploaded while the game loads, and each capture's fracture is computed as the duel begins, while the board is still. Safari on Mac and iPhone limits pages to 60 fps unless its ProMotion setting is enabled. The Android app asks the system for the panel's fastest refresh mode.
 
 ## Android app
 
@@ -92,7 +107,9 @@ A release build needs your own signing key.
 | `web/index.html`, `web/style.css` | Page, HUD and menus |
 | `web/js/chess.js` | Rules engine (0x88 board, move generation, SAN, draw rules, save format) |
 | `web/js/ai.js`, `ai-worker.js`, `engine.js` | Search and evaluation, the worker, and the main-thread client with an inline fallback |
-| `web/js/stage.js` | Renderer, bloom, adaptive resolution, reflection probe |
+| `web/js/stage.js` | Renderer, quality presets, bloom, render resolution, environment capture |
+| `web/js/perf.js` | Refresh-rate detection, 60 fps cap and dynamic resolution |
+| `web/js/reflection.js` | Planar mirror reflection for the board |
 | `web/js/textures.js`, `assets.js` | GPU-baked stone textures and canvas decals |
 | `web/js/cathedral.js`, `board.js` | Architecture, lighting, board, frame and move markers |
 | `web/js/pieces.js`, `weapons.js` | Sculpted piece and weapon geometry |
@@ -108,11 +125,11 @@ A release build needs your own signing key.
 
 ```sh
 cd wizard-chess
-npm test        # rules (perft), AI, fracture and physics, Android bridge
+npm test        # rules (perft), AI, fracture and physics, frame pacing, Android bridge
 npm run verify  # static checks of modules, DOM ids, assets and the Android manifest
 ```
 
-The rules engine is checked against the standard perft node counts for six reference positions, including castling, en passant and promotion edge cases. The AI tests cover mates in one, avoiding stalemate, material tactics and every difficulty level. The shatter tests check that the fragments tile each piece's volume and that rubble settles on the board and dissolves.
+The rules engine is checked against the standard perft node counts for six reference positions, including castling, en passant and promotion edge cases. The AI tests cover mates in one, avoiding stalemate, material tactics and every difficulty level. The shatter tests check that the fragments tile each piece's volume and that rubble settles on the board and dissolves. The frame-pacing tests simulate 60–240 Hz displays and GPUs of different speeds to check refresh detection, the 60 fps cap and dynamic resolution.
 
 ## Credits
 

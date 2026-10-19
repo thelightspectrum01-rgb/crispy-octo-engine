@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
@@ -75,6 +76,7 @@ public final class MainActivity extends Activity {
             getWindow().setAttributes(attributes);
         }
         createWebView();
+        preferRefreshRate(true);
         immersive();
     }
 
@@ -175,6 +177,9 @@ public final class MainActivity extends Activity {
                     sessionActive = data != null && data.optBoolean("active", false);
                     updateWakeState();
                     break;
+                case "display":
+                    preferRefreshRate(data == null || data.optBoolean("highRefresh", true));
+                    break;
                 default:
                     break;
             }
@@ -193,6 +198,28 @@ public final class MainActivity extends Activity {
             amplitudes[i + 1] = i % 2 == 0 ? VibrationEffect.DEFAULT_AMPLITUDE : 0;
         }
         vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1));
+    }
+
+    // Android keeps many 90/120 Hz panels at 60 Hz unless the app asks; the game can then render at
+    // the panel's full rate. With high = false the mode closest to 60 Hz is chosen to save battery.
+    @SuppressWarnings("deprecation")
+    private void preferRefreshRate(boolean high) {
+        Display display = Build.VERSION.SDK_INT >= 30 ? getDisplay() : getWindowManager().getDefaultDisplay();
+        if (display == null) return;
+        Display.Mode current = display.getMode();
+        Display.Mode chosen = null;
+        for (Display.Mode mode : display.getSupportedModes()) {
+            if (mode.getPhysicalWidth() != current.getPhysicalWidth() || mode.getPhysicalHeight() != current.getPhysicalHeight()) continue;
+            if (chosen == null
+                || (high && mode.getRefreshRate() > chosen.getRefreshRate())
+                || (!high && Math.abs(mode.getRefreshRate() - 60f) < Math.abs(chosen.getRefreshRate() - 60f))) chosen = mode;
+        }
+        if (chosen == null) return;
+        WindowManager.LayoutParams params = getWindow().getAttributes();
+        if (params.preferredDisplayModeId != chosen.getModeId()) {
+            params.preferredDisplayModeId = chosen.getModeId();
+            getWindow().setAttributes(params);
+        }
     }
 
     private void updateWakeState() {

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {mergeGeometries} from '../vendor/three/addons/utils/BufferGeometryUtils.js';
 import {FLOOR_Y, STEP2} from './board.js';
 import {lancetTexture, roseTexture, cookieTexture, glowTexture, flameTexture, shaftTexture, runeCircleTexture, canvasTexture} from './textures.js';
+import {REFLECT_LAYER} from './reflection.js';
 
 export const NAVE = {pierX: 10.5, wallX: 17, endZ: 24, bays: [-18, -12, -6, 0, 6, 12, 18], arcadeSpring: 8.6, arcadeTop: 14.5, vaultSpring: 21.5};
 const BLOCK = 4.8; // world size of one ashlar texture tile
@@ -144,6 +145,8 @@ export class Cathedral {
     this.buildLights();
     this.buildShafts();
     this.buildDust();
+    // The board mirror renders a separate layer; it needs the same lights to shade what it reflects.
+    this.group.traverse(o => { if (o.isLight) o.layers.enable(REFLECT_LAYER); });
   }
 
   buildFloor(textures) {
@@ -286,7 +289,8 @@ export class Cathedral {
 
   buildWindows() {
     const {bays, arcadeTop, pierX, wallX, endZ} = NAVE;
-    const lancetTextures = [lancetTexture(1), lancetTexture(2), lancetTexture(3)];
+    const d = this.quality.detail || 1;
+    const lancetTextures = [1, 2, 3].map(seed => lancetTexture(seed, 256 * d, 768 * d));
     const materials = lancetTextures.map(t => stainedMaterial(t, 2.1));
     const add = (mesh) => { mesh.renderOrder = -1; this.group.add(mesh); };
     const mids = [];
@@ -307,7 +311,7 @@ export class Cathedral {
         }
       }
     });
-    const roseMat = stainedMaterial(roseTexture(1024), 2.6);
+    const roseMat = stainedMaterial(roseTexture(1024 * d), 2.6);
     for (const endSide of [-1, 1]) {
       const rose = new THREE.Mesh(new THREE.CircleGeometry(5, 48), roseMat);
       rose.position.set(0, 19.5, endSide * (endZ + 0.4));
@@ -355,6 +359,7 @@ export class Cathedral {
     flame.userData.base = flame.scale.clone();
     flame.userData.phase = Math.random() * 100;
     this.group.add(flame);
+    flame.layers.enable(REFLECT_LAYER);
     this.flames.push(flame);
     return flame;
   }
@@ -434,7 +439,7 @@ export class Cathedral {
   }
 
   buildFloorRunes() {
-    const texture = runeCircleTexture(1024);
+    const texture = runeCircleTexture(1024 * (this.quality.detail || 1));
     this.floorRunes = new THREE.Mesh(new THREE.PlaneGeometry(17.5, 17.5).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({
       map: texture, color: new THREE.Color(0.12, 0.25, 0.5), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false}));
     this.floorRunes.position.y = FLOOR_Y + 0.01;

@@ -15,7 +15,8 @@ import {SoundBoard} from './audio.js';
 import {UI} from './ui.js';
 import {Engine} from './engine.js';
 import {Game, moveDetails, moveFrom, moveTo, movePromo, WHITE, BLACK, PAWN, KNIGHT, BISHOP, ROOK, QUEEN} from './chess.js';
-import {haptic, setSessionActive} from './platform.js';
+import {haptic, setSessionActive, setHighRefresh} from './platform.js';
+import {FrameGovernor} from './perf.js';
 
 const KEYS = {settings: 'wizard-chess.settings', save: 'wizard-chess.save', newGame: 'wizard-chess.new-game'};
 const store = {
@@ -24,7 +25,8 @@ const store = {
   remove(key) { try { localStorage.removeItem(key); } catch { /* storage unavailable */ } },
 };
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const DEFAULTS = {cinematic: reducedMotion ? 'off' : 'all', quality: 'auto', sfx: 0.8, music: 0.5, hints: true, shake: !reducedMotion, muted: false};
+const DEFAULTS = {cinematic: reducedMotion ? 'off' : 'all', quality: 'auto', sfx: 0.8, music: 0.5, hints: true, shake: !reducedMotion, muted: false,
+  frameCap: 'display', dynamicRes: true, showFps: false};
 const LEVEL_NAMES = {novice: 'Novice', apprentice: 'Apprentice', adept: 'Adept', archmage: 'Archmage'};
 const THINK_TIME = {novice: 300, apprentice: 500, adept: 900, archmage: 2200, hint: 900};
 const PROMO = {q: QUEEN, r: ROOK, b: BISHOP, n: KNIGHT};
@@ -74,6 +76,10 @@ class App {
     this.last = performance.now();
     this.paused = false;
     this.raycaster = new THREE.Raycaster();
+    this.governor = new FrameGovernor({cap: this.settings.frameCap, dynamic: this.settings.dynamicRes});
+    this.shadowHold = 2;
+    this.piecesVersion = -1;
+    this.perfShown = 0;
     this.pointer = null;
     this.touches = new Map();
   }
@@ -92,17 +98,19 @@ class App {
     const {stage} = this;
     const quality = QUALITY[qualityName];
     this.quality = quality;
-    await Promise.race([document.fonts.load('700 40px Cinzel').catch(() => {}), delay(2500)]);
+    await Promise.all([Promise.race([document.fonts.load('700 40px Cinzel').catch(() => {}), delay(2500)]), this.probeRefresh()]);
     this.ui.loading('Carving the stone…');
     await nextFrame();
     const textures = createTextures(stage.renderer, quality);
     stage.buildEnvironment();
     this.ui.loading('Raising the nave…');
     await nextFrame();
-    this.board = new Board({textures, fontFamily: 'Cinzel, serif'});
+    this.board = new Board({textures, fontFamily: 'Cinzel, serif', reflection: stage.reflection, detail: quality.detail, anisotropy: quality.anisotropy});
     this.cathedral = new Cathedral({textures, quality});
     stage.scene.add(this.board.group, this.cathedral.group);
-    this.factory = new PieceFactory({textures, segments: quality.segments});
+    // Reflections come from the real cathedral, captured before any piece stands on the board.
+    stage.captureEnvironment();
+    this.factory = new PieceFactory({textures, segments: quality.segments, glossy: quality.clearcoat});
     this.weapons = new WeaponKit(this.factory);
     this.fx = new Effects(stage.scene);
     this.shatter = new Shatter(stage.scene, {
@@ -120,11 +128,21 @@ class App {
     this.restore();
     this.ui.loading('Lighting the candles…');
     await nextFrame();
-    stage.renderer.compile(stage.scene, stage.camera);
+    // Shards show the fracture material only once something breaks; compile it with the rest.
+    const shardProbes = this.factory.fractureMaterials.map(material => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), material);
+      mesh.castShadow = mesh.receiveShadow = true;
+      return mesh;
+    });
+    stage.warmUp(shardProbes);
+    for (const mesh of shardProbes) mesh.geometry.dispose();
     this.bindInput();
     this.bindUI();
     window.addEventListener('resize', () => this.resize());
-    document.addEventListener('visibilitychange', () => this.setPaused(document.hidden));
+    document.addEventListener('visibilitychange', () => {
+      this.setPaused(document.hidden);
+      if (!document.hidden) this.governor.startProbe();
+    });
     window.addEventListener('wizard:pause', () => this.setPaused(true));
     window.addEventListener('wizard:foreground', () => this.setPaused(false));
     window.WizardAndroidBack = () => this.back();
@@ -168,8 +186,29 @@ class App {
 
   // ---------- settings ----------
 
+  // Measures the display's refresh rate while nothing heavy is rendering yet.
+  probeRefresh() {
+    return new Promise(resolve => {
+      this.governor.startProbe(24);
+      const step = t => {
+        this.governor.tick(t);
+        if (this.governor.probing) requestAnimationFrame(step);
+        else resolve();
+      };
+      requestAnimationFrame(step);
+      setTimeout(resolve, 1500);
+    });
+  }
+
   applySettings() {
     const s = this.settings;
+    this.governor.setCap(s.frameCap);
+    if (this.governor.dynamic !== s.dynamicRes) {
+      this.governor.setDynamic(s.dynamicRes);
+      if (!s.dynamicRes && this.stage.renderScale !== 1) this.stage.setRenderScale(1);
+    }
+    setHighRefresh(s.frameCap === 'display');
+    this.ui.showPerf(s.showFps);
     this.ui.writeSettings(s);
     this.ui.setSound(s.muted);
     this.audio.setVolumes({sfx: s.sfx, music: s.music});
@@ -298,6 +337,7 @@ class App {
 
   select(sq, quiet = false) {
     this.selected = sq;
+    this.shadowHold = 2;
     const moves = this.game.movesFrom(sq);
     const byTarget = new Map();
     for (const m of moves) {
@@ -315,6 +355,7 @@ class App {
   }
 
   clearSelection() {
+    this.shadowHold = 2;
     if (this.selected >= 0) {
       const view = this.pieces.at(this.selected);
       if (view) view.setGlow(1);
@@ -588,6 +629,7 @@ class App {
     else if (k === 'v') this.rig.frame(this.playerColor);
     else if (k === 'm') this.toggleSound();
     else if (k === 'l') this.ui.toggleLedger();
+    else if (k === 'f') this.updateSetting({showFps: !this.settings.showFps});
   }
 
   // Back button / Escape: close the top panel, open or leave the menu. Returns true when handled.
@@ -635,11 +677,8 @@ class App {
       .on('back', () => ui.closePanels())
       .on('settingsDone', () => ui.closePanels())
       .on('settingsChanged', s => {
-        const qualityChanged = s.quality !== this.settings.quality;
-        this.settings = {...this.settings, ...s};
-        store.set(KEYS.settings, this.settings);
-        this.applySettings();
-        if (qualityChanged) ui.qualityNote(true);
+        if (s.quality !== this.settings.quality) ui.qualityNote(true);
+        this.updateSetting(s);
       })
       .on('restart', () => { this.save(); location.reload(); })
       .on('undo', () => this.undo())
@@ -648,6 +687,12 @@ class App {
       .on('sound', () => this.toggleSound())
       .on('menu', () => { ui.closePanels(); this.showTitle(); })
       .on('viewBoard', () => { ui.closePanels(); this.updateHud(); });
+  }
+
+  updateSetting(changes) {
+    this.settings = {...this.settings, ...changes};
+    store.set(KEYS.settings, this.settings);
+    this.applySettings();
   }
 
   // ---------- frame loop ----------
@@ -676,12 +721,26 @@ class App {
     cine.fov = 50;
   }
 
+  // Runs at the display's refresh rate (120 Hz screens get 120 fps) unless capped at 60; the
+  // governor lowers render resolution when frames are being missed and restores it later.
   loop(now) {
     requestAnimationFrame(t => this.loop(t));
+    if (this.paused || this.manualClock) { this.last = now; return; }
+    if (!this.governor.tick(now)) return;
     const realDt = Math.min(0.05, Math.max(0, (now - this.last) / 1000));
     this.last = now;
-    if (this.paused || this.manualClock) return;
     this.frame(realDt);
+    const scale = this.governor.frame(now);
+    if (scale !== null) {
+      this.stage.setRenderScale(scale);
+      this.cathedral.setViewportHeight(this.stage.height * this.stage.pixelRatio);
+    }
+    if (this.settings.showFps && now - this.perfShown > 500) {
+      this.perfShown = now;
+      const {x, y} = this.stage.bufferSize;
+      const scaled = this.stage.renderScale < 1 ? ` (${Math.round(this.stage.renderScale * 100)}%)` : '';
+      this.ui.setPerf(`${Math.round(this.governor.fps)} fps · ${this.governor.refreshHz} Hz display · ${x}×${y}${scaled} · ${this.quality.label}`);
+    }
   }
 
   // Deterministic stepping for automated visual checks: advances the world in fixed steps,
@@ -713,8 +772,11 @@ class App {
     this.board.update(realDt);
     this.rig.update(realDt);
     if (!render) return;
-    this.stage.render();
-    if (!this.manualClock) this.stage.trackFrame(realDt);
+    // Shadows and the board mirror are only re-rendered when something in them moved.
+    const moving = this.director.busy || this.shatter.active > 0 || Boolean(this.levitating) || this.shadowHold > 0 || this.pieces.version !== this.piecesVersion;
+    if (this.shadowHold > 0) this.shadowHold--;
+    this.piecesVersion = this.pieces.version;
+    this.stage.render(moving);
     if (this.director.busy !== this.wasBusy) {
       this.wasBusy = this.director.busy;
       if (this.mode === 'play' || this.mode === 'over') this.updateHud();

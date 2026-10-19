@@ -241,6 +241,9 @@ export class UI {
       music: Number($('vol-music').value) / 100,
       hints: $('opt-hints').checked,
       shake: $('opt-shake').checked,
+      frameCap: document.querySelector('input[name=framecap]:checked').value,
+      dynamicRes: $('opt-dynamic').checked,
+      showFps: $('opt-fps').checked,
     };
   }
 
@@ -252,7 +255,14 @@ export class UI {
     $('vol-music').value = Math.round(s.music * 100);
     $('opt-hints').checked = s.hints;
     $('opt-shake').checked = s.shake;
+    const cap = $('framecap-' + s.frameCap);
+    if (cap) cap.checked = true;
+    $('opt-dynamic').checked = s.dynamicRes;
+    $('opt-fps').checked = s.showFps;
   }
+
+  showPerf(show) { $('perf').hidden = !show; }
+  setPerf(text) { $('perf').textContent = text; }
 
   qualityNote(show) { $('quality-note').hidden = !show; }
 }

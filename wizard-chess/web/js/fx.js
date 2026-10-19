@@ -1,6 +1,7 @@
 // Visual effects: instanced billboard particles, weapon slash trails, shockwave rings,
-// the promotion light pillar and a pooled impact flash light.
+// the promotion light pillar and the impact flash.
 import * as THREE from 'three';
+import {REFLECT_LAYER} from './reflection.js';
 import {glowTexture, dustTexture, chipTexture, shaftTexture} from './textures.js';
 import {groundHeight} from './board.js';
 
@@ -145,8 +146,9 @@ class Trail {
     for (let i = 0; i < n; i++) {
       const s = this.samples[i];
       const a = Math.max(0, 1 - s.age / this.maxAge);
-      this.positions.set([s.base.x, s.base.y, s.base.z], i * 6);
-      this.positions.set([s.tip.x, s.tip.y, s.tip.z], i * 6 + 3);
+      const o = i * 6, pos = this.positions;
+      pos[o] = s.base.x; pos[o + 1] = s.base.y; pos[o + 2] = s.base.z;
+      pos[o + 3] = s.tip.x; pos[o + 4] = s.tip.y; pos[o + 5] = s.tip.z;
       this.alphas[i * 2] = a * 0.15;
       this.alphas[i * 2 + 1] = a * a;
     }
@@ -164,14 +166,19 @@ export class Effects {
     this.chips = new ParticleSystem(500, chipTexture(), false);
     this.sparks = new ParticleSystem(700, glow, true);
     this.magic = new ParticleSystem(600, glow, true);
-    for (const s of [this.dust, this.chips, this.sparks, this.magic]) scene.add(s.mesh);
+    for (const s of [this.dust, this.chips, this.sparks, this.magic]) { s.mesh.layers.enable(REFLECT_LAYER); scene.add(s.mesh); }
     this.trails = [new Trail(new THREE.Color(0.6, 0.95, 1.4)), new Trail(new THREE.Color(1.5, 0.55, 0.2))];
-    for (const t of this.trails) scene.add(t.mesh);
-    // Constant light count keeps shader programs stable; the flash idles at zero intensity.
-    this.flash = new THREE.PointLight(0xffd0a0, 0, 5, 2);
-    this.flash.position.set(0, 1, 0);
+    for (const t of this.trails) { t.mesh.layers.enable(REFLECT_LAYER); scene.add(t.mesh); }
+    // The impact flash is a bloom-catching sprite rather than a light: a point light would cost
+    // every pixel of every frame even while idle.
+    this.flash = new THREE.Sprite(new THREE.SpriteMaterial({map: glow, blending: THREE.AdditiveBlending, depthWrite: false,
+      transparent: true, toneMapped: false}));
+    this.flash.visible = false;
+    this.flash.renderOrder = 10;
+    this.flash.layers.enable(REFLECT_LAYER);
     scene.add(this.flash);
     this.flashLevel = 0;
+    this.flashColor = new THREE.Color();
     this.rings = [];
     const ringTex = this.makeRingTexture();
     for (let i = 0; i < 3; i++) {
@@ -279,8 +286,8 @@ export class Effects {
 
   flashAt(pos, color, strength = 1) {
     this.flash.position.copy(pos);
-    this.flash.color.copy(color);
-    this.flashLevel = Math.max(this.flashLevel, 9 * strength);
+    this.flashColor.copy(color);
+    this.flashLevel = Math.max(this.flashLevel, strength);
   }
 
   lightPillar(pos, on = true) {
@@ -292,8 +299,12 @@ export class Effects {
   update(dt) {
     for (const s of [this.dust, this.chips, this.sparks, this.magic]) s.update(dt);
     for (const t of this.trails) t.update(dt);
-    this.flashLevel *= Math.exp(-dt * 9);
-    this.flash.intensity = this.flashLevel < 0.05 ? 0 : this.flashLevel;
+    this.flashLevel *= Math.exp(-dt * 7);
+    this.flash.visible = this.flashLevel > 0.02;
+    if (this.flash.visible) {
+      this.flash.scale.setScalar(0.6 + 1.6 * this.flashLevel);
+      this.flash.material.color.copy(this.flashColor).multiplyScalar(3 * this.flashLevel);
+    }
     for (const r of this.rings) {
       if (!r.mesh.visible) continue;
       r.life += dt;

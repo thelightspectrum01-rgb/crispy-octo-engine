@@ -3,6 +3,7 @@
 // chunk-chunk and chunk-piece collisions, sleeping) until the rubble crumbles away.
 import * as THREE from 'three';
 import {groundHeight} from './board.js';
+import {REFLECT_LAYER} from './reflection.js';
 
 const EPS = 1e-6;
 const tmpV = new THREE.Vector3(), tmpR = new THREE.Vector3(), tmpW = new THREE.Vector3();
@@ -161,8 +162,9 @@ export function fracture(model, count, localImpact) {
   return chunks;
 }
 
+// Group 0 is the polished outer skin, group 1 the fresh fracture faces (a matte material).
 function buildChunk(parts, centroid, vol) {
-  const positions = [], normals = [], uvs = [], colors = [];
+  const lists = [0, 1].map(() => ({positions: [], normals: [], uvs: [], colors: []}));
   const hull = [];
   const shadeOuter = 0.85 + Math.random() * 0.15;
   const normal = new THREE.Vector3(), center = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
@@ -185,6 +187,7 @@ function buildChunk(parts, centroid, vol) {
     if (normal.dot(e1.subVectors(center, part.centroid)) < 0) { normal.negate(); ordered = [...vs].reverse(); }
     const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);
     const shade = f.outer ? shadeOuter : 1.25 + Math.random() * 0.1;
+    const {positions, normals, uvs, colors} = lists[f.outer ? 0 : 1];
     for (let i = 1; i < ordered.length - 1; i++) {
       for (const p of [ordered[0], ordered[i], ordered[i + 1]]) {
         positions.push(p.x - centroid.x, p.y - centroid.y, p.z - centroid.z);
@@ -201,10 +204,14 @@ function buildChunk(parts, centroid, vol) {
     }
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const join = key => [...lists[0][key], ...lists[1][key]];
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(join('positions'), 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(join('normals'), 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(join('uvs'), 2));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(join('colors'), 3));
+  const skin = lists[0].positions.length / 3, broken = lists[1].positions.length / 3;
+  geometry.addGroup(0, skin, 0);
+  geometry.addGroup(skin, broken, 1);
   let radius = 0;
   for (const h of hull) radius = Math.max(radius, h.length());
   return {geometry, centroid, vol, hull, radius};
@@ -239,9 +246,21 @@ export class Shatter {
     this.chunks = [];
     this.gravity = -9.5;
     this.accumulator = 0;
+    this.prepared = new WeakMap();
   }
 
   get active() { return this.chunks.length; }
+
+  fragmentCount(piece) {
+    const base = {1: 14, 2: 18, 3: 18, 4: 20, 5: 22, 6: 24}[piece.type] || 16;
+    return Math.max(6, Math.round(base * this.quality));
+  }
+
+  // Fractures a piece ahead of time (as a duel begins, while the board is still), so the frame of
+  // impact only places the shards. localImpact: expected point of impact in the piece's own space.
+  prepare(piece, localImpact = null) {
+    this.prepared.set(piece, fracture(piece.model, this.fragmentCount(piece), localImpact));
+  }
 
   // Breaks a piece apart. impact: {point (world), dir (world, unit), strength, up, radial, spin, crumble}
   shatter(piece, impact) {
@@ -250,17 +269,18 @@ export class Shatter {
     const matrix = piece.pose.matrixWorld;
     const inverse = matrix.clone().invert();
     const localImpact = impact.point ? impact.point.clone().applyMatrix4(inverse) : null;
-    const base = {1: 14, 2: 18, 3: 18, 4: 20, 5: 22, 6: 24}[piece.type] || 16;
-    const pieces = fracture(model, Math.max(6, Math.round(base * this.quality)), localImpact);
+    const pieces = this.prepared.get(piece) || fracture(model, this.fragmentCount(piece), localImpact);
+    this.prepared.delete(piece);
     const quat = new THREE.Quaternion(), scale = new THREE.Vector3(), position = new THREE.Vector3();
     matrix.decompose(position, quat, scale);
     const center = new THREE.Vector3(0, model.height * 0.45, 0).applyMatrix4(matrix);
-    const material = piece.body.material;
+    const materials = [piece.body.material, piece.factory.fractureMaterials[piece.color]];
     const created = [];
     for (const data of pieces) {
-      const mesh = new THREE.Mesh(data.geometry, material);
+      const mesh = new THREE.Mesh(data.geometry, materials);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.layers.enable(REFLECT_LAYER);
       mesh.position.copy(data.centroid).applyMatrix4(matrix);
       mesh.quaternion.copy(quat);
       this.scene.add(mesh);
@@ -293,8 +313,9 @@ export class Shatter {
   // obstacles: [{x, z, r, h}] standing pieces (vertical cylinders) that rubble bounces off.
   update(dt, obstacles = []) {
     if (!this.chunks.length) return;
+    // 240 Hz steps keep rubble moving on every frame of a 120-240 Hz display.
     this.accumulator = Math.min(this.accumulator + dt, 0.1);
-    const step = 1 / 120;
+    const step = 1 / 240;
     while (this.accumulator >= step) {
       this.step(step, obstacles);
       this.accumulator -= step;
@@ -332,7 +353,7 @@ export class Shatter {
         m.position.addScaledVector(c.v, dt);
         tmpQ.set(c.w.x * dt * 0.5, c.w.y * dt * 0.5, c.w.z * dt * 0.5, 0).multiply(m.quaternion);
         m.quaternion.set(m.quaternion.x + tmpQ.x, m.quaternion.y + tmpQ.y, m.quaternion.z + tmpQ.z, m.quaternion.w + tmpQ.w).normalize();
-        this.ground(c);
+        this.ground(c, dt);
       }
       // Standing pieces are vertical cylinders; a walking piece shoves rubble aside.
       for (const o of obstacles) {
@@ -388,7 +409,7 @@ export class Shatter {
   }
 
   // Contacts against the stepped ground height field, with restitution and Coulomb friction.
-  ground(c) {
+  ground(c, dt) {
     const m = c.mesh;
     let deepest = 0, contacts = 0;
     let impactSpeed = 0;
@@ -425,7 +446,7 @@ export class Shatter {
     if (deepest > 0) m.position.y += deepest * 0.85;
     if (impactSpeed > 1.1 && this.onImpact) this.onImpact(impactSpeed, m.position, c.radius);
     if (contacts && c.v.lengthSq() < 0.012 && c.w.lengthSq() < 0.09) {
-      c.rest += 1 / 120;
+      c.rest += dt;
       if (c.rest > 0.45) { c.sleeping = true; c.v.set(0, 0, 0); c.w.set(0, 0, 0); }
     } else if (!contacts) c.rest = 0;
   }

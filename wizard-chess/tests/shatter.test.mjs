@@ -27,6 +27,22 @@ test('every piece model has geometry, glow parts and fracture volumes', () => {
   }
 });
 
+test('glossy pieces get a clear-coated finish and shards a matte fracture material', () => {
+  const glossy = new PieceFactory({textures: {whiteMarble: dummy, blackMarble: dummy, stoneNormal: dummy}, segments: 16, glossy: true});
+  for (const m of glossy.stoneMaterials) {
+    assert.equal(m.type, 'MeshPhysicalMaterial');
+    assert.equal(m.clearcoat, 1);
+    assert.ok(m.clearcoatRoughness < 0.1 && m.roughness < 0.35);
+  }
+  for (const m of glossy.fractureMaterials) assert.ok(m.roughness > 0.7, 'fresh breaks are matte');
+  assert.equal(factory.stoneMaterials[0].type, 'MeshStandardMaterial', 'lower presets keep the cheaper material');
+  const [chunk] = fracture(glossy.models[QUEEN], 12, null);
+  const groups = chunk.geometry.groups;
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map(g => g.materialIndex), [0, 1]);
+  assert.equal(groups[0].count + groups[1].count, chunk.geometry.attributes.position.count);
+});
+
 test('Voronoi chunks tile each lathe piece without gaps', () => {
   for (const type of [PAWN, BISHOP, ROOK, QUEEN, KING]) {
     const model = factory.models[type];
@@ -66,4 +82,17 @@ test('rubble falls, settles on the board and dissolves', () => {
   for (let t = 0; t < 10; t += 1 / 60) shatter.update(1 / 60);
   assert.equal(shatter.active, 0, 'all rubble dissolved');
   assert.ok(dissolved >= chunks.length);
+});
+
+test('a fracture prepared as the duel begins is the one used at impact', () => {
+  const scene = new THREE.Scene();
+  const shatter = new Shatter(scene);
+  const piece = factory.create(KING, WHITE);
+  scene.add(piece.root);
+  shatter.prepare(piece, new THREE.Vector3(0, 0.8, 0.2));
+  const prepared = shatter.prepared.get(piece);
+  assert.ok(prepared.length >= 10);
+  const chunks = shatter.shatter(piece, {point: new THREE.Vector3(0, 0.8, -0.2), dir: new THREE.Vector3(0, 0, 1), strength: 2});
+  assert.deepEqual(chunks.map(c => c.mesh.geometry), prepared.map(p => p.geometry));
+  assert.equal(shatter.prepared.has(piece), false, 'a prepared fracture is used once');
 });

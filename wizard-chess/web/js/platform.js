@@ -24,3 +24,6 @@ export function haptic(pattern) {
 
 // Keeps the screen awake while a game is in progress (Android only).
 export function setSessionActive(active) { send('session', {active: Boolean(active)}); }
+
+// Asks Android for the display's fastest refresh rate (120 Hz and up), or the default rate.
+export function setHighRefresh(enabled) { send('display', {highRefresh: Boolean(enabled)}); }

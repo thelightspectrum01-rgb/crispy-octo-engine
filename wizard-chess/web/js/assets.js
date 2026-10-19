@@ -2,7 +2,7 @@
 import {TextureBaker} from './textures.js';
 
 export function createTextures(renderer, quality) {
-  const baker = new TextureBaker(renderer, quality.texture);
+  const baker = new TextureBaker(renderer, quality.texture, quality.anisotropy);
   const floorSeed = 31.7, wallSeed = 12.3;
   const textures = {
     // Ivory statuary marble with grey veining.

@@ -43,10 +43,11 @@ body {
 #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
 #vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 55%, transparent 55%, rgba(0, 0, 0, 0.5) 100%); }
 
-#letterbox .bar { position: fixed; left: 0; right: 0; height: 0; background: #000; transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1); pointer-events: none; z-index: 2; }
-#letterbox .bar.top { top: 0; }
-#letterbox .bar.bottom { bottom: 0; }
-#letterbox.on .bar { height: 9vh; }
+/* The bars slide with transforms so the compositor animates them without layout or repaints. */
+#letterbox .bar { position: fixed; left: 0; right: 0; height: 9vh; background: #000; transform: scaleY(0); transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); pointer-events: none; z-index: 2; will-change: transform; }
+#letterbox .bar.top { top: 0; transform-origin: top; }
+#letterbox .bar.bottom { bottom: 0; transform-origin: bottom; }
+#letterbox.on .bar { transform: none; }
 #skip-hint {
   position: fixed; left: 0; right: 0; bottom: calc(2.6vh + env(safe-area-inset-bottom, 0px)); margin: 0; z-index: 3; text-align: center;
   font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--dim);
@@ -61,7 +62,12 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 #ui > * { pointer-events: auto; }
-#ui > #banner { pointer-events: none; }
+#ui > #banner, #ui > #perf { pointer-events: none; }
+#perf {
+  position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 5; margin: 0;
+  padding: 5px 10px; font-size: 0.9rem; font-variant-numeric: tabular-nums; color: var(--parchment);
+  background: var(--slab); border: 1px solid var(--edge); border-radius: 3px;
+}
 
 .label { font-family: var(--font-display); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim); margin: 0; }
 .eyebrow { font-family: var(--font-display); font-size: 0.78rem; letter-spacing: 0.32em; text-transform: uppercase; color: var(--gilt); margin: 0 0 0.6rem; }
@@ -183,6 +189,8 @@ fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: colu
 .segmented { display: grid; gap: 8px; }
 .segmented.three { grid-template-columns: repeat(3, 1fr); }
 .segmented.four { grid-template-columns: repeat(4, 1fr); }
+.segmented.five { grid-template-columns: repeat(5, 1fr); }
+.segmented.two { grid-template-columns: repeat(2, 1fr); }
 .segmented input, .levels input, .toggle input { position: absolute; opacity: 0; pointer-events: none; }
 .segmented label {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 48px; padding: 8px 6px; cursor: pointer; text-align: center;
@@ -258,6 +266,7 @@ kbd:first-child { margin-left: 0; }
   .title-block { margin-left: 0; }
   .levels { grid-template-columns: 1fr; }
   .segmented.four { grid-template-columns: repeat(2, 1fr); }
+  .segmented.five { grid-template-columns: repeat(3, 1fr); }
   #move-list { grid-template-columns: 2.2em 1fr 1fr; }
 }
 @media (max-height: 520px) and (orientation: landscape) {
