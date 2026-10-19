@@ -411,6 +411,7 @@ export class App {
     if (this.state !== 'racing' && this.state !== 'countdown') return;
     this.resumeState = this.state;
     this.state = 'paused';
+    this.pausedDrawn = false;
     this.ui.showPause(true);
     this.audio.suspend();
   }
@@ -474,7 +475,7 @@ export class App {
         this.updateRace(dt, input, true);
         break;
       case 'paused':
-        this.renderOnly(dt);
+        this.renderOnly();
         return;
       default:
     }
@@ -485,8 +486,12 @@ export class App {
     return this.autoBot.decide(this.race.sim);
   }
 
-  renderOnly(dt) {
-    this.world.update(dt * 0, this.race?.sim.collected);
+  /** Paused: draw the frozen scene once (and again after a resize), not every frame. */
+  renderOnly() {
+    if (this.pausedDrawn && !this.world.dirty) return;
+    this.pausedDrawn = true;
+    this.world.dirty = false;
+    this.world.update(0, this.race?.sim.collected);
     this.world.render(0);
   }
 

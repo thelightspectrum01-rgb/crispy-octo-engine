@@ -116,6 +116,7 @@ export class World {
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
     this.post.setSize(w, h, dpr);
+    this.dirty = true; // the canvas was cleared: redraw even if the game is paused
     this.rig.resize(w / h);
     this.sparks.setViewportScale(h * dpr);
     this.trail.setViewportScale(h * dpr);
